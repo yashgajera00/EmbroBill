@@ -1,0 +1,32 @@
+# Node / React Exclusions
+node_modules/
+dist/
+dist-backend/
+dist_electron/
+build/
+.vscode/
+
+# Python / Django Exclusions
+venv/
+env/
+.venv/
+.venv*/
+venv*/
+python39-x86/
+__pycache__/
+*.pyc
+db.sqlite3
+db.sqlite3.bak
+media/
+staticfiles/
+.env
+
+# Log & Output Files
+*.log
+*log*.txt
+inspect_*.txt
+
+# System / Temp Files
+.DS_Store
+Thumbs.db
+*.bak

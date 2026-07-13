@@ -1,0 +1,85 @@
+@media print {
+    /* Hide dashboard UI components */
+    #sidebar, 
+    .navbar, 
+    .btn, 
+    .alert,
+    .no-print,
+    .navbar-custom,
+    header,
+    footer {
+        display: none !important;
+    }
+
+    /* Reset layout margins for full-width print page */
+    body {
+        background-color: #fff !important;
+        color: #000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        font-size: 10pt !important;
+        font-family: 'Helvetica', 'Arial', sans-serif !important;
+    }
+
+    .wrapper {
+        display: block !important;
+    }
+
+    #content {
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    /* Print container sizing for A4 portrait */
+    .print-container {
+        width: 100% !important;
+        max-width: 100% !important;
+        border: none !important;
+        padding: 0 !important;
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+
+    /* Traditional Invoice Styling */
+    .invoice-box {
+        width: 100% !important;
+        border: 2px solid #000 !important;
+        padding: 10px !important;
+        box-sizing: border-box !important;
+        background: #fff !important;
+    }
+
+    /* Tables high-contrast layout for print */
+    table {
+        border-collapse: collapse !important;
+        width: 100% !important;
+    }
+
+    th, td {
+        border: 1px solid #000 !important;
+        padding: 4px !important;
+        font-size: 9pt !important;
+    }
+
+    th {
+        background-color: #fff !important;
+        color: #000 !important;
+        font-weight: bold !important;
+    }
+
+    /* Prevent page breaks inside rows and key sections */
+    tr {
+        page-break-inside: avoid !important;
+    }
+
+    .signature-section {
+        page-break-inside: avoid !important;
+    }
+
+    /* Page dimensions */
+    @page {
+        size: A4 portrait;
+        margin: 1cm;
+    }
+}

@@ -1,0 +1,15 @@
+# Core Django & Server
+Django>=4.2,<5.0
+django-cors-headers>=4.3.0
+
+# Document & Image Processing (for Invoice PDFs and Logos)
+reportlab>=4.0.0
+Pillow>=9.5.0
+
+# Build & Desktop Integration (for PyInstaller compilation)
+PyInstaller>=6.0.0
+pywin32; sys_platform == 'win32'
+pywin32-ctypes; sys_platform == 'win32'
+
+# Security & Compatibility
+certifi

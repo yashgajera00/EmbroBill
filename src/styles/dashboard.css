@@ -1,0 +1,628 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+:root {
+    --font-primary: 'Outfit', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+    --bg-primary: #f8f9fa;
+    --sidebar-bg: #1e293b;
+    --sidebar-hover: #334155;
+    --sidebar-active: #0f172a;
+    --card-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05);
+    --primary-color: #4f46e5;
+    --primary-hover: #4338ca;
+}
+
+body {
+    font-family: var(--font-primary);
+    background-color: var(--bg-primary);
+    overflow-x: auto;
+    margin: 0;
+}
+
+/* --- LAYOUT --- */
+#content {
+    width: 100%;
+    padding: 30px;
+    min-height: calc(100vh - 65px);
+    transition: all 0.3s;
+}
+
+.navbar-nav .nav-link.active {
+    background-color: var(--primary-color) !important;
+    color: #fff !important;
+}
+
+/* --- TOP NAVBAR --- */
+.navbar-custom {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: var(--card-shadow);
+    padding: 15px 20px;
+    margin-bottom: 30px;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    color: #fff !important;
+}
+
+/* --- METRIC CARDS --- */
+.metric-card {
+    background: #fff;
+    border: none;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    overflow: hidden;
+}
+
+.metric-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 35px -5px rgba(79, 70, 229, 0.1);
+}
+
+.metric-card .card-body {
+    padding: 25px;
+}
+
+.metric-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    margin-bottom: 15px;
+}
+
+.bg-primary-light {
+    background-color: rgba(79, 70, 229, 0.1);
+    color: var(--primary-color);
+}
+
+.bg-success-light {
+    background-color: rgba(16, 185, 129, 0.1);
+    color: #10b981;
+}
+
+.bg-warning-light {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
+
+.bg-info-light {
+    background-color: rgba(6, 182, 212, 0.1);
+    color: #06b6d4;
+}
+
+.metric-title {
+    font-size: 0.85rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 0;
+}
+
+/* --- RECENT TABLES & LISTS --- */
+.content-card {
+    background: #fff;
+    border: none;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    padding: 24px;
+    margin-bottom: 30px;
+}
+
+.card-title {
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.table {
+    vertical-align: middle;
+}
+
+.table thead th {
+    background-color: #f8fafc;
+    color: #000000 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    font-size: 16px !important;
+    letter-spacing: 0.5px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.table tbody td {
+    padding: 16px;
+    color: #000000;
+    font-size: 18px;
+    font-weight: 400;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+/* --- BUTTONS --- */
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    font-weight: 500;
+    border-radius: 8px;
+    padding: 8px 16px;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+.btn-light {
+    background-color: #f1f5f9;
+    border-color: #e2e8f0;
+    color: #334155;
+    font-weight: 500;
+    border-radius: 8px;
+}
+
+.btn-light:hover {
+    background-color: #e2e8f0;
+    color: #1e293b;
+}
+
+/* --- INVOICE CREATE FORM CUSTOMS --- */
+.invoice-form-section {
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 20px;
+    margin-bottom: 20px;
+}
+
+.invoice-form-section:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.table.invoice-table thead th,
+.invoice-table th {
+    background: #0f172a !important;
+    color: #ffffff !important;
+}
+
+.invoice-table input.form-control-sm {
+    padding: 4px 8px;
+    font-size: 14px !important;
+    color: #000000 !important;
+    border-radius: 4px;
+}
+
+/* Suppression of browser number spinners for inline edit inputs */
+.inline-edit-input::-webkit-outer-spin-button,
+.inline-edit-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.inline-edit-input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* --- LOGIN FORM SCREEN --- */
+.login-container {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at top left, #4f46e5, #0f172a);
+}
+
+.login-card {
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 20px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+    padding: 40px;
+    width: 100%;
+    max-width: 420px;
+}
+
+.login-logo {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: var(--primary-color);
+    text-align: center;
+    margin-bottom: 5px;
+    letter-spacing: -1px;
+}
+
+.login-subtitle {
+    text-align: center;
+    color: #64748b;
+    margin-bottom: 30px;
+    font-size: 0.9rem;
+}
+
+/* --- UNIFIED MODERN PILL SEARCH BAR --- */
+.unified-search-bar {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.unified-search-bar:focus-within {
+    box-shadow: 0 10px 30px -5px rgba(79, 70, 229, 0.15);
+    border-color: #cbd5e1;
+}
+
+@media (min-width: 992px) {
+    .unified-search-bar {
+        border-radius: 50px !important;
+    }
+
+    .search-divider {
+        width: 1px;
+        height: 28px;
+        background-color: #e2e8f0;
+        margin: 0 12px;
+        align-self: center;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .unified-search-bar {
+        flex-direction: column;
+        border-radius: 20px !important;
+        padding: 20px;
+        gap: 16px;
+        align-items: stretch !important;
+    }
+
+    .search-divider {
+        display: none;
+    }
+
+    .w-100-mobile {
+        width: 100% !important;
+        flex-direction: column;
+        gap: 8px !important;
+    }
+}
+
+/* Hide scrollbars globally for all elements but keep them scrollable */
+*::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+* {
+    -ms-overflow-style: none !important;
+    /* IE and Edge */
+    scrollbar-width: none !important;
+    /* Firefox */
+}
+
+/* Remove row button hover effect */
+.remove-row-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease-in-out;
+    padding: 0.25rem 0.5rem;
+    overflow: hidden;
+    max-width: 32px;
+    white-space: nowrap;
+}
+
+.remove-row-btn .btn-text {
+    max-width: 0;
+    opacity: 0;
+    margin-left: 0;
+    transition: max-width 0.2s ease-in-out, opacity 0.2s ease-in-out, margin-left 0.2s ease-in-out;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.remove-row-btn:hover {
+    max-width: 100px;
+    padding: 0.25rem 0.75rem;
+}
+
+.remove-row-btn:hover .btn-text {
+    max-width: 60px;
+    opacity: 1;
+    margin-left: 4px;
+}
+
+/* --- ACCORDION OVERRIDES --- */
+.accordion-button:not(.collapsed) {
+    background-color: rgba(79, 70, 229, 0.05) !important;
+    color: var(--primary-color) !important;
+    box-shadow: none !important;
+}
+
+.accordion-button:focus {
+    box-shadow: 0 0 0 0.25rem rgba(79, 70, 229, 0.15) !important;
+    border-color: #cbd5e1 !important;
+}
+
+/* --- INVOICE & HISTORY COMPATIBILITY LAYOUTS --- */
+
+/* Reduce excessive table padding ONLY inside invoice and history tables */
+.invoice-table thead th,
+.history-table thead th {
+    padding: 8px 5px !important;
+    text-align: center;
+}
+
+.invoice-table tbody td,
+.history-table tbody td {
+    padding: 8px 5px !important;
+    text-align: center;
+}
+
+/* Keep numeric/date columns using white-space: nowrap */
+.col-nowrap {
+    white-space: nowrap !important;
+}
+
+/* Table footer totals row styles */
+.totals-row td {
+    background-color: #f1f5f9 !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
+    border-top: 2.5px solid #94a3b8 !important;
+    border-bottom: 2.5px solid #94a3b8 !important;
+    font-size: 18px !important;
+    padding: 16px 5px !important;
+    text-align: center !important;
+}
+
+/* Allow text columns to wrap and define design/customer column widths */
+.col-wrap-text {
+    white-space: normal !important;
+    word-wrap: break-word;
+    word-break: break-word;
+}
+
+/* Ensure all inputs, select, and textarea use consistent box-sizing, line-height, padding, and font-size */
+input.form-control,
+select.form-select,
+textarea.form-control {
+    box-sizing: border-box !important;
+    line-height: 1.5 !important;
+    padding: 0.375rem 0.75rem !important;
+    font-size: 18.5px !important;
+    font-weight: 450 !important;
+    color: #000000 !important;
+}
+
+/* Custom styling for date inputs to prevent native calendar indicators from clipping year text */
+input[type="date"].form-control {
+    box-sizing: border-box !important;
+    line-height: 1.5 !important;
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+    font-size: 15px !important;
+    color: #000000 !important;
+}
+
+
+/* Hide WebKit-specific spinners and clear button in date inputs to recover horizontal space */
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+    display: none !important;
+    -webkit-appearance: none !important;
+}
+
+/* === RESPONSIVE SCALING FOR SMALLER SCREENS === */
+
+/* Medium screens (tablets, small laptops, low-res desktops) */
+@media (max-width: 1024px) {
+    #content {
+        padding: 16px;
+    }
+
+    .navbar-custom {
+        padding: 10px 14px;
+        margin-bottom: 18px;
+    }
+
+    .metric-card .card-body {
+        padding: 16px;
+    }
+
+    .metric-icon {
+        width: 38px;
+        height: 38px;
+        font-size: 1.2rem;
+        margin-bottom: 10px;
+    }
+
+    .metric-value {
+        font-size: 1.35rem;
+    }
+
+    .metric-title {
+        font-size: 0.75rem;
+    }
+
+    .content-card {
+        padding: 16px;
+        margin-bottom: 18px;
+    }
+
+    .login-card {
+        padding: 28px;
+        max-width: 360px;
+    }
+
+    .login-logo {
+        font-size: 2rem;
+    }
+}
+
+/* Small screens (compact windows, very small displays) */
+@media (max-width: 768px) {
+    #content {
+        padding: 10px;
+    }
+
+    .navbar-custom {
+        padding: 8px 10px;
+        margin-bottom: 12px;
+    }
+
+    .metric-card .card-body {
+        padding: 12px;
+    }
+
+    .metric-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+        border-radius: 8px;
+        margin-bottom: 8px;
+    }
+
+    .metric-value {
+        font-size: 1.15rem;
+    }
+
+    .metric-title {
+        font-size: 0.7rem;
+    }
+
+    .content-card {
+        padding: 12px;
+        margin-bottom: 14px;
+        border-radius: 12px;
+    }
+
+    .table thead th {
+        padding: 8px 10px;
+        font-size: 0.7rem;
+    }
+
+    .table tbody td {
+        padding: 10px;
+        font-size: 0.8rem;
+    }
+
+    .btn-primary,
+    .btn-light {
+        padding: 6px 12px;
+        font-size: 0.8rem;
+    }
+
+    .login-card {
+        padding: 22px;
+        max-width: 320px;
+        border-radius: 16px;
+    }
+
+    .login-logo {
+        font-size: 1.75rem;
+    }
+
+    .login-subtitle {
+        font-size: 0.8rem;
+        margin-bottom: 20px;
+    }
+}
+
+/* Custom Invoice Form Label */
+.invoice-form-label {
+    font-size: 16.5px !important;
+    color: #000000 !important;
+}
+
+/* Edit Payment Modal styles to match main form inputs and labels */
+.payment-modal-input {
+    box-sizing: border-box !important;
+    line-height: 1.5 !important;
+    padding: 0.375rem 0.75rem !important;
+    font-size: 18.5px !important;
+    font-weight: 450 !important;
+    color: #000000 !important;
+}
+
+.payment-modal-label {
+    font-size: 16.5px !important;
+    color: #000000 !important;
+}
+
+/* ── Premium Sliding Capsule Toggle (hangs from navbar) ── */
+.history-toggle-pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    background: #1e293b;
+    border-radius: 0 0 0 18px;
+    padding: 6px 6px 8px 6px;
+    gap: 0;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.4);
+}
+
+.toggle-backdrop {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: calc(50% - 6px);
+    height: calc(100% - 14px);
+    background: #ffffff;
+    border-radius: 12px;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+    z-index: 1;
+    pointer-events: none;
+}
+
+.history-toggle-button {
+    position: relative;
+    z-index: 2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 16px 44px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 12px;
+    transition: color 0.25s ease;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+    flex: 1;
+}
+
+.history-toggle-button:hover {
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.history-toggle-button.active {
+    color: #1e293b;
+}
+
+.history-toggle-button i {
+    font-size: 18px;
+}
