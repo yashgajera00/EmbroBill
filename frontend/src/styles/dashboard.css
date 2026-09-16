@@ -215,39 +215,417 @@ body {
     appearance: textfield;
 }
 
-/* --- LOGIN FORM SCREEN --- */
-.login-container {
+/* ==========================================================================
+   MODERN EMBROBILL LOGIN SCREEN (MATCHING MOBILE APK SCREENSHOT)
+   ========================================================================== */
+.eb-login-wrapper {
+  min-height: 100vh;
+  background-color: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  box-sizing: border-box;
+}
+
+.eb-login-device-frame {
+  width: 100%;
+  max-width: 410px;
+  background: #ffffff;
+  border-radius: 36px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(15, 23, 42, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 720px;
+}
+
+@media (max-width: 480px) {
+  .eb-login-wrapper {
+    padding: 0;
+    background-color: #ffffff;
+  }
+  .eb-login-device-frame {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: radial-gradient(circle at top left, #4f46e5, #0f172a);
+  }
 }
 
-.login-card {
-    background: rgba(255, 255, 255, 0.95);
-    border-radius: 20px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-    padding: 40px;
-    width: 100%;
-    max-width: 420px;
+/* Status Bar */
+.eb-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px 8px 24px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0f172a;
 }
 
-.login-logo {
-    font-size: 2.5rem;
-    font-weight: 800;
-    color: var(--primary-color);
-    text-align: center;
-    margin-bottom: 5px;
-    letter-spacing: -1px;
+.eb-status-time {
+  font-feature-settings: "tnum";
+  letter-spacing: -0.2px;
 }
 
-.login-subtitle {
-    text-align: center;
-    color: #64748b;
-    margin-bottom: 30px;
-    font-size: 0.9rem;
+.eb-status-icons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
 }
+
+/* Content Area */
+.eb-login-content {
+  padding: 16px 28px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+/* App Icon / Logo Badge */
+.eb-logo-container {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+  margin-bottom: 20px;
+}
+
+.eb-app-icon-card {
+  width: 76px;
+  height: 76px;
+  background: #ffffff;
+  border-radius: 20px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.08), 0 2px 6px rgba(15, 23, 42, 0.04);
+  border: 1.5px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.eb-app-icon-card:hover {
+  transform: translateY(-2px);
+}
+
+.eb-mini-phone-icon {
+  width: 48px;
+  height: 56px;
+  background: #0f172a;
+  border-radius: 10px;
+  border: 2px solid #1e293b;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.eb-mini-screen {
+  background: #ffffff;
+  border-radius: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 4px 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.eb-mini-logo {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.eb-mini-lines {
+  width: 85%;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5px;
+}
+
+.eb-mini-line {
+  height: 2.5px;
+  background: #e2e8f0;
+  border-radius: 2px;
+  width: 100%;
+}
+
+.eb-mini-btn {
+  width: 85%;
+  height: 5px;
+  background: #2563eb;
+  border-radius: 2px;
+}
+
+/* Titles */
+.eb-brand-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #3354f4;
+  text-align: center;
+  letter-spacing: -0.6px;
+  margin: 0 0 6px 0;
+  line-height: 1.15;
+}
+
+.eb-brand-subtitle {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #64748b;
+  text-align: center;
+  margin: 0 0 32px 0;
+  line-height: 1.4;
+}
+
+/* Error Banner */
+.eb-login-error-banner {
+  background-color: #fef2f2;
+  border: 1px solid #fee2e2;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  animation: appModalPopIn 0.2s ease;
+}
+
+/* Form Styles */
+.eb-form-group {
+  margin-bottom: 18px;
+}
+
+.eb-form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.eb-form-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #1e293b;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 0;
+}
+
+.eb-forgot-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #3b5bfd;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.eb-forgot-link:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* Input Fields */
+.eb-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 14px;
+  height: 50px;
+  padding: 0 14px;
+  transition: all 0.2s ease;
+}
+
+.eb-input-wrapper:focus-within {
+  border-color: #3b5bfd;
+  box-shadow: 0 0 0 3px rgba(59, 91, 253, 0.12);
+}
+
+.eb-input-icon {
+  color: #94a3b8;
+  font-size: 18px;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.eb-input-field {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  color: #0f172a;
+  font-size: 14.5px;
+  font-weight: 500;
+  padding: 0;
+  font-family: inherit;
+}
+
+.eb-input-field::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.eb-password-toggle {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: color 0.15s ease;
+}
+
+.eb-password-toggle:hover {
+  color: #475569;
+}
+
+/* Remember Me Checkbox */
+.eb-remember-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  margin-bottom: 22px;
+}
+
+.eb-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #3b5bfd;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.eb-remember-label {
+  font-size: 13px;
+  color: #475569;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  margin: 0;
+}
+
+/* Sign In Button */
+.eb-sign-in-btn {
+  width: 100%;
+  height: 52px;
+  background: linear-gradient(135deg, #3b66ff 0%, #294df3 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 14px;
+  font-size: 15.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(41, 77, 243, 0.35);
+  transition: all 0.2s ease;
+}
+
+.eb-sign-in-btn:hover:not(:disabled) {
+  transform: translateY(-1.5px);
+  box-shadow: 0 12px 28px rgba(41, 77, 243, 0.42);
+}
+
+.eb-sign-in-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.eb-sign-in-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* Biometric Login */
+.eb-biometric-btn {
+  background: none;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 22px auto 0 auto;
+  padding: 8px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.eb-biometric-btn:hover {
+  background-color: #f1f5f9;
+}
+
+.eb-biometric-icon {
+  color: #3b5bfd;
+  font-size: 19px;
+}
+
+.eb-biometric-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* Footer & Security */
+.eb-footer-section {
+  margin-top: auto;
+  padding-top: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.eb-security-pill {
+  width: 32px;
+  height: 22px;
+  background-color: #ecfdf5;
+  border: 1px solid #d1fae5;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #059669;
+  font-size: 12px;
+}
+
+.eb-build-version {
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-align: center;
+  margin: 0;
+  letter-spacing: -0.1px;
+}
+
+.eb-home-indicator {
+  width: 125px;
+  height: 4px;
+  background-color: #cbd5e1;
+  border-radius: 99px;
+  margin: 4px auto 0 auto;
+}
+
 
 /* --- UNIFIED MODERN PILL SEARCH BAR --- */
 .unified-search-bar {
