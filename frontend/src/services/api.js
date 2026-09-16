@@ -1,8 +1,10 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: (window.location.protocol === 'http:' || window.location.protocol === 'https:') ? '/api' : 'http://127.0.0.1:8000/api',
-  withCredentials: true, // Crucial for Django session cookie authentication
+  baseURL: (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+    ? 'https://embrobill00.pythonanywhere.com/api'
+    : 'http://127.0.0.1:8000/api',
+  withCredentials: true,
 });
 
 // Add request interceptor to prevent caching of GET requests in browser / Electron
