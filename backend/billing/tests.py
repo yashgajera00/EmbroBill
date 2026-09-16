@@ -13,13 +13,13 @@ class BillingSystemTests(TestCase):
             'pan_number': "ABCDE1234F",
             'plan_expiry_date': None
         })
-        self.company = Company.objects.create(
-            address="Surat",
-            phone="9876543210",
-            bank_name="SBI",
-            account_number="3000",
-            ifsc_code="SBIN000"
-        )
+        self.company = Company.objects.first()
+        self.company.address = "Surat"
+        self.company.phone = "9876543210"
+        self.company.bank_name = "SBI"
+        self.company.account_number = "3000"
+        self.company.ifsc_code = "SBIN000"
+        self.company.save()
         
         # Setup customer
         self.customer = Customer.objects.create(
@@ -295,13 +295,11 @@ class BillingSystemTests(TestCase):
         form = InvoiceForm(data=form_data_exact)
         self.assertTrue(form.is_valid())
 
-        # Test invalid bill_date after plan expiry date
-        form_data_invalid = form_data_valid.copy()
-        form_data_invalid['bill_date'] = '2026-06-26'
-        form = InvoiceForm(data=form_data_invalid)
-        self.assertFalse(form.is_valid())
-        self.assertIn('bill_date', form.errors)
-        self.assertEqual(form.errors['bill_date'][0], 'Your plan has expired.')
+        # Test bill_date is allowed without expiry restriction
+        form_data_future = form_data_valid.copy()
+        form_data_future['bill_date'] = '2026-06-26'
+        form = InvoiceForm(data=form_data_future)
+        self.assertTrue(form.is_valid())
 
     def test_plan_expiry_validation_api(self):
         from django.contrib.auth.models import User
@@ -314,7 +312,7 @@ class BillingSystemTests(TestCase):
         self.company.plan_expiry_date = datetime.date(2026, 6, 25)
         self.company.save()
 
-        # Post an invoice date after expiry date
+        # Post an invoice date
         payload = {
             'bill_number': 'TEST/API/EXP',
             'customer': self.customer.id,
@@ -345,34 +343,26 @@ class BillingSystemTests(TestCase):
             data=json.dumps(payload),
             content_type='application/json'
         )
-        self.assertEqual(response.status_code, 400)
-        resp_json = response.json()
-        self.assertEqual(resp_json.get('error'), 'Your plan has expired.')
+        self.assertIn(response.status_code, [200, 201])
 
-    def test_plan_expiry_date_readonly(self):
+    def test_company_settings_editable(self):
         from django.contrib.auth.models import User
-        import datetime
         import json
 
         user = User.objects.create_user(username='admin_settings', password='password')
         self.client.force_login(user)
 
-        self.company.plan_expiry_date = datetime.date(2026, 6, 25)
-        self.company.save()
-
-        # Try to modify plan_expiry_date via settings post API
         payload = {
-            'company_name': self.company.company_name,
-            'phone': self.company.phone,
-            'address': self.company.address,
-            'gst_number': self.company.gst_number,
-            'state_code': self.company.state_code,
-            'pan_number': self.company.pan_number,
-            'bank_name': self.company.bank_name,
-            'account_number': self.company.account_number,
-            'ifsc_code': self.company.ifsc_code,
-            'terms_conditions': self.company.terms_conditions,
-            'plan_expiry_date': '2026-06-26'
+            'company_name': 'Updated Textiles Pvt Ltd',
+            'phone': '9876543210',
+            'address': 'Surat, Gujarat',
+            'gst_number': '24ABCDE1234F1Z5',
+            'state_code': '24-GJ',
+            'pan_number': 'ABCDE1234F',
+            'bank_name': 'HDFC Bank',
+            'account_number': '1234567890',
+            'ifsc_code': 'HDFC0001234',
+            'terms_conditions': 'Standard terms'
         }
 
         response = self.client.post(
@@ -380,23 +370,10 @@ class BillingSystemTests(TestCase):
             data=json.dumps(payload),
             content_type='application/json'
         )
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json().get('error'), 'Plan Expiry Date is read-only and cannot be changed.')
-
-
-
-    def test_env_variable_precedence(self):
-        import os
-        from billing.config_helper import get_config_value, save_config_values
-        
-        save_config_values({'company_name': 'Config Name'})
-        self.assertEqual(get_config_value('company_name'), 'Config Name')
-        
-        os.environ['COMPANY_NAME'] = 'Env Name'
-        try:
-            self.assertEqual(get_config_value('company_name'), 'Env Name')
-        finally:
-            del os.environ['COMPANY_NAME']
+        self.assertEqual(response.status_code, 200)
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.company_name, 'Updated Textiles Pvt Ltd')
+        self.assertEqual(self.company.gst_number, '24ABCDE1234F1Z5')
 
     def test_unconfigured_values_return_blank(self):
         from billing.config_helper import save_config_values, get_config_value
@@ -471,99 +448,69 @@ class BillingSystemTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json().get('error'), 'User not found.')
 
-    def test_activate_license_http_error(self):
-        from unittest.mock import patch, MagicMock
-        import urllib.error
-        import io
-        import sys
+    def test_register_api_success(self):
         import json
-        
-        # Mock urllib.request.urlopen to raise HTTPError
-        fp = io.BytesIO(b'{"success": false, "error": "Invalid License Key"}')
-        http_error = urllib.error.HTTPError(
-            url="https://yashgajera00.pythonanywhere.com/api/license/",
-            code=400,
-            msg="Bad Request",
-            hdrs={},
-            fp=fp
+        payload = {
+            'username': 'new_business_owner',
+            'password': 'password123',
+            'company_name': 'My New Embroidery Hub',
+            'gst_number': '24AABCB1234F1Z1',
+            'phone': '9876543210',
+            'address': 'Ring Road, Surat'
+        }
+        response = self.client.post(
+            '/api/register/',
+            data=json.dumps(payload),
+            content_type='application/json'
         )
-        
-        with patch('urllib.request.urlopen', side_effect=http_error) as mock_urlopen, \
-             patch('sys.stderr', new_callable=io.StringIO) as mock_stderr, \
-             patch('logging.getLogger') as mock_get_logger:
-            
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-            
-            response = self.client.post(
-                '/api/license/',
-                data=json.dumps({"token": "invalid_token"}),
-                content_type='application/json'
-            )
-            
-            # Should keep user friendly popup and response
-            self.assertEqual(response.status_code, 400)
-            self.assertEqual(response.json().get('error'), 'Invalid License Key')
-            
-            # Assert detailed exception logs in console (stderr)
-            stderr_output = mock_stderr.getvalue()
-            self.assertIn("License Activation API Request Failed", stderr_output)
-            self.assertIn("HTTP Status Code: 400", stderr_output)
-            self.assertIn("HTTPError", stderr_output)
-            self.assertIn("Traceback", stderr_output)
-            
-            # Assert logger.error was called
-            mock_logger.error.assert_called()
-            log_arg = mock_logger.error.call_args[0][0]
-            self.assertIn("License Activation API Request Failed", log_arg)
-            self.assertIn("HTTP Status Code: 400", log_arg)
-            
-            # Assert context is passed to urlopen
-            mock_urlopen.assert_called_once()
-            called_kwargs = mock_urlopen.call_args[1]
-            self.assertIn('context', called_kwargs)
-            self.assertIsNotNone(called_kwargs['context'])
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json().get('success'))
+        self.assertEqual(response.json().get('username'), 'new_business_owner')
 
-    def test_activate_license_connection_error(self):
-        from unittest.mock import patch, MagicMock
-        import urllib.error
-        import io
-        import sys
+        # Verify company and user were updated/created
+        from django.contrib.auth.models import User
+        self.assertTrue(User.objects.filter(username='new_business_owner').exists())
+        self.company.refresh_from_db()
+        self.assertEqual(self.company.company_name, 'My New Embroidery Hub')
+        self.assertEqual(self.company.gst_number, '24AABCB1234F1Z1')
+
+    def test_register_api_duplicate_username(self):
         import json
-        
-        url_error = urllib.error.URLError("DNS lookup failed")
-        
-        with patch('urllib.request.urlopen', side_effect=url_error) as mock_urlopen, \
-             patch('sys.stderr', new_callable=io.StringIO) as mock_stderr, \
-             patch('logging.getLogger') as mock_get_logger:
-            
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-            
-            response = self.client.post(
-                '/api/license/',
-                data=json.dumps({"token": "invalid_token"}),
-                content_type='application/json'
-            )
-            
-            # Should keep user friendly popup and response
-            self.assertEqual(response.status_code, 503)
-            self.assertEqual(response.json().get('error'), 'Unable to connect to the License Server. Please check your internet connection.')
-            
-            # Assert detailed exception logs in console (stderr)
-            stderr_output = mock_stderr.getvalue()
-            self.assertIn("License Activation API Request Failed", stderr_output)
-            self.assertIn("URLError", stderr_output)
-            self.assertIn("DNS lookup failed", stderr_output)
-            
-            # Assert logger.error was called
-            mock_logger.error.assert_called()
-            
-            # Assert context is passed to urlopen
-            mock_urlopen.assert_called_once()
-            called_kwargs = mock_urlopen.call_args[1]
-            self.assertIn('context', called_kwargs)
-            self.assertIsNotNone(called_kwargs['context'])
+        from django.contrib.auth.models import User
+        User.objects.create_user(username='existing_user', password='password123')
+
+        payload = {
+            'username': 'existing_user',
+            'password': 'password123',
+            'company_name': 'Another Company'
+        }
+        response = self.client.post(
+            '/api/register/',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('already taken', response.json().get('error', '').lower())
+
+    def test_register_api_validation(self):
+        import json
+        # Missing username
+        response = self.client.post(
+            '/api/register/',
+            data=json.dumps({'username': '', 'password': '123'}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('Username is required', response.json().get('error'))
+
+        # Short password
+        response = self.client.post(
+            '/api/register/',
+            data=json.dumps({'username': 'validuser', 'password': '12'}),
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('at least 4 characters', response.json().get('error'))
 
 
 class AutoIncrementBillNumberTests(TestCase):

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import authAPI from '../services/authAPI';
 import logoIcon from '../assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import '../styles/dashboard.css';
 
-export default function Login({ onLoginSuccess, triggerAlert, onNeedActivate }) {
+export default function Login({ onLoginSuccess, triggerAlert }) {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem('embrobill_remember_username') || '';
   });
@@ -262,29 +262,24 @@ export default function Login({ onLoginSuccess, triggerAlert, onNeedActivate }) 
               )}
             </button>
 
-            {/* OPTIONAL ACTIVATE LICENSE LINK */}
-            {onNeedActivate && (
-              <div className="text-center mt-3">
-                <button
-                  type="button"
-                  className="eb-forgot-link"
-                  style={{
-                    fontSize: '12.5px',
-                    background: 'none',
-                    border: 'none',
-                    color: '#6366f1',
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '5px'
-                  }}
-                  onClick={onNeedActivate}
-                >
-                  <i className="bi bi-key"></i>
-                  <span>Enter License Key</span>
-                </button>
-              </div>
-            )}
+            {/* SIGN UP / REGISTER LINK */}
+            <div className="text-center mt-3">
+              <span style={{ fontSize: '13px', color: '#64748b' }}>
+                Don't have an account?{' '}
+              </span>
+              <Link
+                to="/register"
+                className="eb-forgot-link"
+                style={{
+                  fontSize: '13px',
+                  color: '#2563eb',
+                  fontWeight: '600',
+                  textDecoration: 'none'
+                }}
+              >
+                Sign Up
+              </Link>
+            </div>
           </form>
 
           {/* FOOTER & SECURITY */}

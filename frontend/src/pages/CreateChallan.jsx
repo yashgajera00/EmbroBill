@@ -140,9 +140,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
   const [previewBillNumber, setPreviewBillNumber] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [planExpiryDate, setPlanExpiryDate] = useState(null);
   const [defaultHsnCode, setDefaultHsnCode] = useState('');
-  const [showExpiryModal, setShowExpiryModal] = useState(false);
   const [editingCell, setEditingCell] = useState(null); // { rowIndex: number, field: string }
   const [showExtraChargesModal, setShowExtraChargesModal] = useState(false);
   const [extraChargesClosing, setExtraChargesClosing] = useState(false);
@@ -214,9 +212,6 @@ export default function CreateChallan({ triggerAlert, mode }) {
         let defaultHsn = '';
         try {
           const settings = await settingsAPI.get();
-          if (settings && settings.plan_expiry_date) {
-            setPlanExpiryDate(settings.plan_expiry_date);
-          }
           if (settings && settings.default_hsn_code) {
             defaultHsn = settings.default_hsn_code;
             setDefaultHsnCode(settings.default_hsn_code);
@@ -313,10 +308,6 @@ export default function CreateChallan({ triggerAlert, mode }) {
   // Form field updates
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'bill_date' && planExpiryDate && value > planExpiryDate) {
-      setShowExpiryModal(true);
-      return;
-    }
     setInvoiceForm(prev => ({
       ...prev,
       [name]: value
@@ -1101,11 +1092,6 @@ export default function CreateChallan({ triggerAlert, mode }) {
   // Form submission handler
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (planExpiryDate && invoiceForm.bill_date > planExpiryDate) {
-      setShowExpiryModal(true);
-      return;
-    }
 
     // Validate customer selection or ad-hoc details
     if (!invoiceForm.customer) {
@@ -2146,43 +2132,6 @@ export default function CreateChallan({ triggerAlert, mode }) {
         </div>
       )}
 
-      {/* Modal overlay popup for Plan Expiry */}
-      {showExpiryModal && (
-        <div className="app-modern-modal-backdrop" onClick={() => setShowExpiryModal(false)}>
-          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="app-modern-modal-header">
-              <div className="app-modern-modal-icon amber">
-                <i className="bi bi-shield-exclamation"></i>
-              </div>
-              <button
-                type="button"
-                className="app-modern-modal-close-btn"
-                onClick={() => setShowExpiryModal(false)}
-                aria-label="Close"
-              >
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-            <h3 className="app-modern-modal-title">License Expired!</h3>
-            <p className="app-modern-modal-desc">
-              Your software license has expired or the challan date exceeds your plan period. Please activate a new license.
-            </p>
-            <div className="app-modern-modal-pill-box">
-              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Expiry Date</span>
-              <strong className="text-dark" style={{ fontSize: '13.5px' }}>{formatDateDDMMYYYY(planExpiryDate)}</strong>
-            </div>
-            <div className="app-modern-modal-actions-col">
-              <button
-                type="button"
-                className="app-modern-btn-primary"
-                onClick={() => setShowExpiryModal(false)}
-              >
-                Understood
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Modal overlay popup for Live PDF Invoice Preview */}
       {previewInvoiceId && (

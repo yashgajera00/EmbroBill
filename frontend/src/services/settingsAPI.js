@@ -8,10 +8,6 @@ export const settingsAPI = {
   save: async (data) => {
     const response = await api.post('/settings/', data);
     return response.data;
-  },
-  activateLicense: async (token) => {
-    const response = await api.post('/license/', { token });
-    return response.data;
   }
 };
 

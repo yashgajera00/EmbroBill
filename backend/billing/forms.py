@@ -2,34 +2,22 @@ from django import forms
 from .models import Company, Customer, Invoice
 
 class CompanyForm(forms.ModelForm):
-    company_name = forms.CharField(
-        max_length=150, 
-        required=False, 
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    gst_number = forms.CharField(
-        max_length=15, 
-        required=False, 
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    pan_number = forms.CharField(
-        max_length=10, 
-        required=False, 
-        widget=forms.TextInput(attrs={'class': 'form-control'})
-    )
-    plan_expiry_date = forms.DateField(
-        required=False, 
-        widget=forms.DateInput(attrs={'class': 'form-control', 'type': 'date'})
-    )
-
     class Meta:
         model = Company
         fields = [
+            'company_name', 'gst_number', 'pan_number', 'plan_expiry_date',
+            'license_key', 'user_id',
             'address', 'phone', 'state_code', 'bank_name', 
             'account_number', 'ifsc_code', 'terms_conditions',
             'bill_no_prefix', 'bill_no_start_number', 'default_hsn_code'
         ]
         widgets = {
+            'company_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'gst_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'pan_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'plan_expiry_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'license_key': forms.TextInput(attrs={'class': 'form-control'}),
+            'user_id': forms.TextInput(attrs={'class': 'form-control'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'state_code': forms.TextInput(attrs={'class': 'form-control'}),
@@ -39,20 +27,13 @@ class CompanyForm(forms.ModelForm):
             'terms_conditions': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
             'bill_no_prefix': forms.TextInput(attrs={'class': 'form-control'}),
             'bill_no_start_number': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
+            'default_hsn_code': forms.TextInput(attrs={'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from .config_helper import get_config_value, parse_date
-        
-        # Populate initial values from config helper
-        self.fields['company_name'].initial = get_config_value('company_name')
-        self.fields['gst_number'].initial = get_config_value('gst_number')
-        self.fields['pan_number'].initial = get_config_value('pan_number')
-        
-        expiry = parse_date(get_config_value('plan_expiry_date'))
-        if expiry:
-            self.fields['plan_expiry_date'].initial = expiry
+        for field in self.fields.values():
+            field.required = False
 
 
 
@@ -121,10 +102,4 @@ class InvoiceForm(forms.ModelForm):
         return bill_number.strip()
 
     def clean_bill_date(self):
-        bill_date = self.cleaned_data.get('bill_date')
-        if bill_date:
-            company = Company.objects.first()
-            if company and company.plan_expiry_date:
-                if bill_date > company.plan_expiry_date:
-                    raise forms.ValidationError("Your plan has expired.")
-        return bill_date
+        return self.cleaned_data.get('bill_date')

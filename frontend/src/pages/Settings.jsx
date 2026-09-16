@@ -30,9 +30,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
     old_password: '',
     new_password: ''
   });
-  const [showLicenseModal, setShowLicenseModal] = useState(false);
-  const [licenseKey, setLicenseKey] = useState('');
-  const [activating, setActivating] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -158,39 +155,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
   useEffect(() => {
     fetchSettings();
   }, []);
-
-  const handleActivateLicense = async (e) => {
-    e.preventDefault();
-    if (!licenseKey.trim()) {
-      triggerAlert('License Key cannot be empty.', 'warning');
-      return;
-    }
-    setActivating(true);
-    try {
-      await settingsAPI.activateLicense(licenseKey.trim());
-      triggerAlert('License activated successfully.', 'success');
-      setShowLicenseModal(false);
-      setLicenseKey('');
-      await fetchSettings();
-    } catch (err) {
-      console.error('Failed to activate license:', err);
-      let errorMsg = err.response?.data?.error || '';
-      if (!err.response || err.code === 'ERR_NETWORK' || err.response.status === 503) {
-        errorMsg = 'Unable to connect to the License Server. Please check your internet connection.';
-      } else if (errorMsg === 'Invalid License') {
-        errorMsg = 'Invalid License Key';
-      } else if (errorMsg === 'License Disabled') {
-        errorMsg = 'This license has been disabled.';
-      } else if (errorMsg === 'License Expired') {
-        errorMsg = 'Your license has expired. Please contact support.';
-      } else if (!errorMsg) {
-        errorMsg = 'Failed to activate license.';
-      }
-      triggerAlert(errorMsg, 'danger');
-    } finally {
-      setActivating(false);
-    }
-  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -331,23 +295,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   <li>
                     <button
                       type="button"
-                      className="dropdown-item d-flex align-items-center gap-2 py-2 px-3 rounded-2 text-dark"
-                      style={{ fontSize: '13px', fontWeight: 500 }}
-                      onClick={() => {
-                        setMoreMenuOpen(false);
-                        setShowLicenseModal(true);
-                      }}
-                    >
-                      <i className="bi bi-key text-primary" style={{ fontSize: '15px' }}></i>
-                      <span>Licence</span>
-                    </button>
-                  </li>
-                  <li>
-                    <hr className="dropdown-divider my-1" style={{ borderColor: '#f1f5f9' }} />
-                  </li>
-                  <li>
-                    <button
-                      type="button"
                       className="dropdown-item d-flex align-items-center gap-2 py-2 px-3 rounded-2 text-danger"
                       style={{ fontSize: '13px', fontWeight: 500 }}
                       onClick={() => {
@@ -402,8 +349,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   type="text"
                   name="company_name"
                   className="settings-input-control"
+                  placeholder="Enter company name"
                   value={formData.company_name}
-                  disabled
+                  onChange={handleChange}
+                  disabled={saving}
                 />
               </div>
 
@@ -533,8 +482,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   type="text"
                   name="gst_number"
                   className="settings-input-control monospace"
+                  placeholder="Enter GST number"
                   value={formData.gst_number}
-                  disabled
+                  onChange={handleChange}
+                  disabled={saving}
                 />
               </div>
 
@@ -545,8 +496,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                     type="text"
                     name="state_code"
                     className="settings-input-control center-text"
+                    placeholder="e.g. 24-GJ"
                     value={formData.state_code}
-                    disabled
+                    onChange={handleChange}
+                    disabled={saving}
                   />
                 </div>
                 <div className="col-6">
@@ -555,8 +508,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                     type="text"
                     name="pan_number"
                     className="settings-input-control center-text monospace"
+                    placeholder="Enter PAN number"
                     value={formData.pan_number}
-                    disabled
+                    onChange={handleChange}
+                    disabled={saving}
                   />
                 </div>
               </div>
@@ -971,70 +926,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   Logout
                 </button>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal: License Manager */}
-        {showLicenseModal && (
-          <div className="app-modern-modal-backdrop" onClick={() => setShowLicenseModal(false)}>
-            <div className="app-modern-modal-card wide" onClick={(e) => e.stopPropagation()}>
-              <div className="app-modern-modal-header">
-                <div className="app-modern-modal-icon blue">
-                  <i className="bi bi-key-fill"></i>
-                </div>
-                <button
-                  type="button"
-                  className="app-modern-modal-close-btn"
-                  onClick={() => setShowLicenseModal(false)}
-                  disabled={activating}
-                  aria-label="Close"
-                >
-                  <i className="bi bi-x-lg"></i>
-                </button>
-              </div>
-              <h3 className="app-modern-modal-title">License Manager</h3>
-              <p className="app-modern-modal-desc">
-                Activate or update your software license key.
-              </p>
-              <form onSubmit={handleActivateLicense}>
-                <div className="mb-3">
-                  <label className="form-label fw-semibold small mb-1">License Key</label>
-                  <input
-                    type="text"
-                    className="app-modern-modal-input"
-                    placeholder="Enter license key"
-                    value={licenseKey}
-                    onChange={(e) => setLicenseKey(e.target.value)}
-                    disabled={activating}
-                    required
-                  />
-                </div>
-                <div className="app-modern-modal-actions-row">
-                  <button
-                    type="button"
-                    onClick={() => setShowLicenseModal(false)}
-                    className="app-modern-btn-secondary"
-                    disabled={activating}
-                  >
-                    Close
-                  </button>
-                  <button
-                    type="submit"
-                    className="app-modern-btn-primary"
-                    disabled={activating}
-                  >
-                    {activating ? (
-                      <>
-                        <span className="spinner-border spinner-border-sm" role="status"></span>
-                        <span>Activating...</span>
-                      </>
-                    ) : (
-                      'Activate License'
-                    )}
-                  </button>
-                </div>
-              </form>
             </div>
           </div>
         )}

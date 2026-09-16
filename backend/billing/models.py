@@ -19,58 +19,12 @@ class Company(models.Model):
     bill_no_start_number = models.IntegerField(default=1)
     default_hsn_code = models.CharField(max_length=50, blank=True, null=True, default="")
 
-    @property
-    def company_name(self):
-        from .config_helper import get_config_value
-        return get_config_value('company_name')
-
-    @company_name.setter
-    def company_name(self, value):
-        from .config_helper import save_config_values
-        save_config_values({'company_name': value})
-
-    @property
-    def gst_number(self):
-        from .config_helper import get_config_value
-        return get_config_value('gst_number')
-
-    @gst_number.setter
-    def gst_number(self, value):
-        from .config_helper import save_config_values
-        save_config_values({'gst_number': value})
-
-    @property
-    def pan_number(self):
-        from .config_helper import get_config_value
-        return get_config_value('pan_number')
-
-    @pan_number.setter
-    def pan_number(self, value):
-        from .config_helper import save_config_values
-        save_config_values({'pan_number': value})
-
-    @property
-    def plan_expiry_date(self):
-        from .config_helper import get_config_value, parse_date
-        return parse_date(get_config_value('plan_expiry_date'))
-
-    @plan_expiry_date.setter
-    def plan_expiry_date(self, value):
-        from .config_helper import save_config_values
-        import datetime
-        if isinstance(value, (datetime.date, datetime.datetime)):
-            value = value.isoformat()
-        save_config_values({'plan_expiry_date': value})
-
-    @property
-    def user_id(self):
-        from .config_helper import get_config_value
-        return get_config_value('user_id')
-
-    @user_id.setter
-    def user_id(self, value):
-        from .config_helper import save_config_values
-        save_config_values({'user_id': value})
+    company_name = models.CharField(max_length=200, blank=True, default="")
+    gst_number = models.CharField(max_length=50, blank=True, default="")
+    pan_number = models.CharField(max_length=50, blank=True, default="")
+    plan_expiry_date = models.DateField(blank=True, null=True)
+    license_key = models.CharField(max_length=255, blank=True, default="")
+    user_id = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
         verbose_name_plural = "Company Settings"

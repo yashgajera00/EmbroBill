@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import authAPI from './services/authAPI';
 import MainLayout from './layouts/MainLayout';
 import Login from './pages/Login';
-import ActivateLicenseScreen from './pages/ActivateLicenseScreen';
+import Register from './pages/Register';
 import Settings from './pages/Settings';
 import InvoiceHistory from './pages/InvoiceHistory';
 import CreateInvoice from './pages/CreateInvoice';
@@ -65,10 +65,6 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(true);
   const [timerDone, setTimerDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
-  
-  // First-time license activation state
-  const [usersExist, setUsersExist] = useState(true);
-  const [activationSuccessData, setActivationSuccessData] = useState(null);
 
   // Manage splash screen timer
   useEffect(() => {
@@ -95,7 +91,6 @@ export default function App() {
     const checkAuth = async () => {
       try {
         const data = await authAPI.status();
-        setUsersExist(data.users_exist !== false);
         if (data.isAuthenticated) {
           setUser({ username: data.username });
         } else {
@@ -130,78 +125,66 @@ export default function App() {
     setAlert(null);
   };
 
-  let mainContent;
-
-  if (activationSuccessData || !usersExist) {
-    mainContent = (
-      <ActivateLicenseScreen
-        activationSuccessData={activationSuccessData}
-        onActivationSuccess={(data) => {
-          setActivationSuccessData(data);
-          setUsersExist(false);
-        }}
-        onGoToLogin={() => {
-          setUsersExist(true);
-          setActivationSuccessData(null);
-        }}
-        onProceedToLogin={() => {
-          if (activationSuccessData?.customer_name) {
-            localStorage.setItem('embrobill_remember_username', activationSuccessData.customer_name);
+  const mainContent = (
+    <BrowserRouter>
+      <Routes>
+        {/* Public login route */}
+        <Route
+          path="/login"
+          element={
+            user ? (
+              <Navigate to="/" replace />
+            ) : (
+              <Login
+                onLoginSuccess={(username) => setUser({ username })}
+                triggerAlert={triggerAlert}
+              />
+            )
           }
-          setUsersExist(true);
-          setActivationSuccessData(null);
-          triggerAlert('License activated! Please enter your password to sign in.', 'success');
-        }}
-      />
-    );
-  } else {
-    mainContent = (
-      <BrowserRouter>
-        <Routes>
-          {/* Public login route */}
-          <Route
-            path="/login"
-            element={
-              user ? (
-                <Navigate to="/" replace />
-              ) : (
-                <Login
-                  onLoginSuccess={(username) => setUser({ username })}
-                  triggerAlert={triggerAlert}
-                  onNeedActivate={() => setUsersExist(false)}
-                />
-              )
-            }
-          />
+        />
 
-          {/* Protected routes wrapped in main Layout */}
-          <Route element={<ProtectedRoute user={user} loading={loading} />}>
-            <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
-              {/* Index & Home route */}
-              <Route path="/" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
-              <Route path="/home" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+        {/* Public registration route */}
+        <Route
+          path="/register"
+          element={
+            user ? (
+              <Navigate to="/" replace />
+            ) : (
+              <Register
+                onRegisterSuccess={(username) => setUser({ username })}
+                triggerAlert={triggerAlert}
+              />
+            )
+          }
+        />
 
-              {/* Dashboard route */}
-              <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+        {/* Protected routes wrapped in main Layout */}
+        <Route element={<ProtectedRoute user={user} loading={loading} />}>
+          <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
+            {/* Index & Home route */}
+            <Route path="/" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/home" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
 
-              {/* Settings route */}
-              <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            {/* Dashboard route */}
+            <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
 
-              {/* Invoice routes */}
-              <Route path="/invoice-history" element={<InvoiceHistory user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
-              <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
-              <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
-              <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />
-              <Route path="/challans/edit/:id" element={<CreateChallan triggerAlert={triggerAlert} mode="Edit" />} />
-            </Route>
+            {/* Settings route */}
+            <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+
+            {/* Invoice routes */}
+            <Route path="/invoice-history" element={<InvoiceHistory user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
+            <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
+            <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />
+            <Route path="/challans/edit/:id" element={<CreateChallan triggerAlert={triggerAlert} mode="Edit" />} />
           </Route>
+        </Route>
 
-          {/* Catch-all redirection */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    );
-  }
+        {/* Catch-all redirection */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
 
   if (showSplash) {
     return <Splash fadeOut={fadeOut} />;

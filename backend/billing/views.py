@@ -417,24 +417,6 @@ def company_settings(request):
         try:
             data = json.loads(request.body)
             if company:
-                # Enforce read-only constraint for Company Name, GST, PAN, and Expiry Date
-                new_name = data.get('company_name')
-                new_gst = data.get('gst_number')
-                new_pan = data.get('pan_number')
-                
-                if new_name is not None and new_name.strip() != company.company_name.strip():
-                    return JsonResponse({'error': 'Company Name is read-only and cannot be changed.'}, status=403)
-                if new_gst is not None and new_gst.strip().upper() != company.gst_number.strip().upper():
-                    return JsonResponse({'error': 'GST Number is read-only and cannot be changed.'}, status=403)
-                if new_pan is not None and new_pan.strip().upper() != company.pan_number.strip().upper():
-                    return JsonResponse({'error': 'PAN Number is read-only and cannot be changed.'}, status=403)
-                
-                new_expiry = data.get('plan_expiry_date')
-                if new_expiry is not None:
-                    curr_expiry = company.plan_expiry_date.isoformat() if company.plan_expiry_date else ''
-                    if new_expiry != curr_expiry:
-                        return JsonResponse({'error': 'Plan Expiry Date is read-only and cannot be changed.'}, status=403)
-            
                 form = CompanyForm(data, instance=company)
             else:
                 form = CompanyForm(data)
@@ -450,209 +432,75 @@ def company_settings(request):
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
 @csrf_exempt
-def activate_license(request):
+def register_view(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed.'}, status=405)
     
     try:
-        data = json.loads(request.body)
-        token = data.get('token', '').strip()
+        content_type = request.META.get('CONTENT_TYPE', '')
+        if 'application/x-www-form-urlencoded' in content_type:
+            data = request.POST
+        else:
+            data = json.loads(request.body) if request.body else {}
     except Exception:
         return JsonResponse({'error': 'Invalid request body.'}, status=400)
-        
-    if not token:
-        return JsonResponse({'error': 'License Key is required.'}, status=400)
-        
-    # Send request to the external license server using built-in urllib
-    import urllib.request
-    import urllib.error
-    import ssl
-    try:
-        import certifi
-        cafile = certifi.where()
-    except ImportError:
-        cafile = None
 
-    if cafile:
-        ssl_context = ssl.create_default_context(cafile=cafile)
-    else:
-        ssl_context = ssl.create_default_context()
-    
-    url = "https://yashgajera00.pythonanywhere.com/api/license/"
-    post_data = json.dumps({"token": token}).encode('utf-8')
-    req = urllib.request.Request(
-        url,
-        data=post_data,
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
-    
+    username = str(data.get('username') or '').strip()
+    password = str(data.get('password') or '').strip()
+    company_name = str(data.get('company_name') or '').strip()
+    gst_number = str(data.get('gst_number') or '').strip()
+    pan_number = str(data.get('pan_number') or '').strip()
+    phone = str(data.get('phone') or '').strip()
+    address = str(data.get('address') or '').strip()
+
+    if not username:
+        return JsonResponse({'error': 'Username is required.'}, status=400)
+    if not password or len(password) < 4:
+        return JsonResponse({'error': 'Password must be at least 4 characters long.'}, status=400)
+
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    if User.objects.filter(username__iexact=username).exists():
+        return JsonResponse({'error': 'Username is already taken. Please choose another username.'}, status=400)
+
     try:
-        with urllib.request.urlopen(req, timeout=10, context=ssl_context) as response:
-            resp_bytes = response.read()
-            status_code = response.status
-    except urllib.error.HTTPError as e:
-        import logging
-        import traceback
-        import sys
-        import ssl
-        import socket
-        logger = logging.getLogger(__name__)
-        tb_str = traceback.format_exc()
-        
-        requests_err = "N/A (urllib is used instead of requests)"
-        ssl_err = "No"
-        timeout_err = "No"
-        
-        log_msg = (
-            f"License Activation API Request Failed.\n"
-            f"- Remote URL being called: {url}\n"
-            f"- Exception Type: {type(e).__module__}.{type(e).__name__}\n"
-            f"- Exception Message: {str(e)}\n"
-            f"- HTTP Status Code: {e.code}\n"
-            f"- Reason: {e.reason}\n"
-            f"- Requests library error (if any): {requests_err}\n"
-            f"- SSL error (if any): {ssl_err}\n"
-            f"- Timeout (if any): {timeout_err}\n"
-            f"- Full Traceback:\n{tb_str}"
+        # Create user
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            is_staff=True
         )
-        logger.error(log_msg)
-        sys.stderr.write(log_msg + "\n")
-        sys.stderr.flush()
-        
-        status_code = e.code
-        resp_bytes = e.read()
-    except Exception as e:
-        import logging
-        import traceback
-        import sys
-        import ssl
-        import socket
-        logger = logging.getLogger(__name__)
-        tb_str = traceback.format_exc()
-        
-        requests_err = "N/A (urllib is used instead of requests)"
-        if 'requests' in type(e).__module__:
-            requests_err = f"{type(e).__name__}: {str(e)}"
-            
-        ssl_err = "No"
-        if isinstance(e, ssl.SSLError):
-            ssl_err = f"Yes: {type(e).__module__}.{type(e).__name__}: {str(e)}"
-        elif hasattr(e, 'reason') and isinstance(e.reason, ssl.SSLError):
-            ssl_err = f"Yes: {type(e.reason).__module__}.{type(e.reason).__name__}: {str(e.reason)}"
-        elif "ssl" in str(e).lower() or "cert" in str(e).lower():
-            ssl_err = f"Yes (detected in string): {str(e)}"
-            
-        timeout_err = "No"
-        if isinstance(e, socket.timeout) or isinstance(e, TimeoutError):
-            timeout_err = f"Yes: {type(e).__module__}.{type(e).__name__}: {str(e)}"
-        elif hasattr(e, 'reason') and (isinstance(e.reason, socket.timeout) or "timeout" in str(e.reason).lower()):
-            timeout_err = f"Yes: {str(e.reason)}"
-        elif "timeout" in str(e).lower():
-            timeout_err = f"Yes (detected in string): {str(e)}"
-            
-        log_msg = (
-            f"License Activation API Request Failed.\n"
-            f"- Remote URL being called: {url}\n"
-            f"- Exception Type: {type(e).__module__}.{type(e).__name__}\n"
-            f"- Exception Message: {str(e)}\n"
-            f"- Requests library error (if any): {requests_err}\n"
-            f"- SSL error (if any): {ssl_err}\n"
-            f"- Timeout (if any): {timeout_err}\n"
-            f"- Full Traceback:\n{tb_str}"
-        )
-        logger.error(log_msg)
-        sys.stderr.write(log_msg + "\n")
-        sys.stderr.flush()
-        
-        return JsonResponse({
-            'error': 'Unable to connect to the License Server. Please check your internet connection.'
-        }, status=503)
-        
-    try:
-        res_data = json.loads(resp_bytes.decode('utf-8'))
-    except Exception as e:
-        import logging
-        import traceback
-        import sys
-        import ssl
-        import socket
-        logger = logging.getLogger(__name__)
-        tb_str = traceback.format_exc()
-        
-        requests_err = "N/A (urllib is used instead of requests)"
-        ssl_err = "No"
-        timeout_err = "No"
-        
-        log_msg = (
-            f"License Activation Response Parsing Failed.\n"
-            f"- Remote URL being called: {url}\n"
-            f"- Exception Type: {type(e).__module__}.{type(e).__name__}\n"
-            f"- Exception Message: {str(e)}\n"
-            f"- Requests library error (if any): {requests_err}\n"
-            f"- SSL error (if any): {ssl_err}\n"
-            f"- Timeout (if any): {timeout_err}\n"
-            f"- Full Traceback:\n{tb_str}"
-        )
-        logger.error(log_msg)
-        sys.stderr.write(log_msg + "\n")
-        sys.stderr.flush()
-        
-        return JsonResponse({'error': 'Invalid response from license server.'}, status=502)
-        
-    # Check if the response indicates success
-    if res_data.get('success') and res_data.get('active'):
-        company_name = res_data.get('company_name', '').strip()
-        gst_number = res_data.get('gst_number', '').strip()
-        pan_number = res_data.get('pan_number', '').strip()
-        plan_expiry_date = res_data.get('plan_expiry_date', '').strip()
-        user_id = str(res_data.get('user_id', '')).strip()
-        
-        customer_name = (
-            res_data.get('customer_name') or 
-            res_data.get('Customer name') or 
-            res_data.get('Customer Name') or 
-            res_data.get('customerName') or 
-            ''
-        ).strip()
-        
-        # Save to .system_data file using existing backend config function
-        from .config_helper import save_config_values
-        save_config_values({
-            'company_name': company_name,
-            'gst_number': gst_number,
-            'pan_number': pan_number,
-            'plan_expiry_date': plan_expiry_date,
-            'license_key': token,
-            'user_id': user_id,
-        })
-        
-        # Ensure local Django user exists or is created
-        username_to_create = customer_name or user_id or "master_admin"
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        if not User.objects.filter(username=username_to_create).exists():
-            User.objects.create_user(
-                username=username_to_create,
-                password="1234",
-                is_staff=True,
-                is_superuser=True
-            )
-        customer_name = username_to_create
-        
+
+        # Update or create Company details in database
+        company = Company.objects.first()
+        if not company:
+            company = Company.objects.create()
+
+        if company_name:
+            company.company_name = company_name
+        if gst_number:
+            company.gst_number = gst_number
+        if pan_number:
+            company.pan_number = pan_number
+        if phone:
+            company.phone = phone
+        if address:
+            company.address = address
+        company.user_id = user.username
+        company.save()
+
+        # Log the user in
+        login(request, user)
+
         return JsonResponse({
             'success': True,
-            'company_name': company_name,
-            'gst_number': gst_number,
-            'pan_number': pan_number,
-            'plan_expiry_date': plan_expiry_date,
-            'active': True,
-            'customer_name': customer_name,
-            'user_id': user_id
+            'username': user.username,
+            'message': 'Account registered successfully.'
         })
-    else:
-        error_msg = res_data.get('error') or res_data.get('message') or 'Invalid License'
-        return JsonResponse({'error': error_msg}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': f'Registration failed: {str(e)}'}, status=500)
+
 
 @api_login_required
 def customer_list(request):

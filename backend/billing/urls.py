@@ -8,7 +8,7 @@ urlpatterns = [
     path('change-password/', views.change_password, name='api_change_password'),
     path('verify-password/', views.verify_password, name='api_verify_password'),
     path('settings/', views.company_settings, name='api_company_settings'),
-    path('license/', views.activate_license, name='api_activate_license'),
+    path('register/', views.register_view, name='api_register'),
     
     # Customer API routes
     path('customers/', views.customer_list, name='api_customer_list'),

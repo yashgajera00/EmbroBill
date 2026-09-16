@@ -40,10 +40,7 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const [formError, setFormError] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   
-  // Plan Expiry Validation States
-  const [planExpiryDate, setPlanExpiryDate] = useState(null);
   const [defaultHsnCode, setDefaultHsnCode] = useState('');
-  const [showExpiryModal, setShowExpiryModal] = useState(false);
   const [showInvoiceCreatedModal, setShowInvoiceCreatedModal] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState(null);
 
@@ -162,9 +159,6 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const fetchSettings = async () => {
     try {
       const data = await settingsAPI.get();
-      if (data && data.plan_expiry_date) {
-        setPlanExpiryDate(data.plan_expiry_date);
-      }
       if (data && data.default_hsn_code) {
         setDefaultHsnCode(data.default_hsn_code);
       }
@@ -320,9 +314,6 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'date' && planExpiryDate && value > planExpiryDate) {
-      setShowExpiryModal(true);
-    }
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
@@ -486,12 +477,6 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
     e.preventDefault();
     if (!formData.customerName || !formData.date) {
       setFormError('Please fill in all required fields (Customer Name and Date).');
-      return;
-    }
-
-    if (planExpiryDate && formData.date > planExpiryDate) {
-      setShowExpiryModal(true);
-      setFormError(`The selected date exceeds your plan expiry date: ${formatDate(planExpiryDate)}`);
       return;
     }
 
@@ -1615,49 +1600,7 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
         </div>
       )}
 
-      {/* Modal overlay popup for Plan Expiry (modern style) */}
-      {showExpiryModal && (
-        <div 
-          className="app-modern-modal-backdrop"
-          onClick={() => setShowExpiryModal(false)}
-        >
-          <div 
-            className="app-modern-modal-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="app-modern-modal-header">
-              <div className="app-modern-modal-icon amber">
-                <i className="bi bi-shield-exclamation"></i>
-              </div>
-              <button 
-                type="button" 
-                className="app-modern-modal-close-btn"
-                onClick={() => setShowExpiryModal(false)}
-                aria-label="Close"
-              >
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-            <h3 className="app-modern-modal-title">License Expired!</h3>
-            <p className="app-modern-modal-desc">
-              Your software license has expired or the selected date exceeds your license validity period.
-            </p>
-            <div className="app-modern-modal-pill-box">
-              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Expiry Date</span>
-              <strong className="text-dark" style={{ fontSize: '13.5px' }}>{formatDate(planExpiryDate)}</strong>
-            </div>
-            <div className="app-modern-modal-actions-col">
-              <button
-                type="button"
-                className="app-modern-btn-secondary"
-                onClick={() => setShowExpiryModal(false)}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Modal overlay popup for Confirm Delete Customer (modern style) */}
       {customerToDelete !== null && (
