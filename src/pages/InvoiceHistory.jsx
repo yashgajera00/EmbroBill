@@ -324,12 +324,34 @@ export default function InvoiceHistory({ triggerAlert }) {
       }
       return;
     }
+
+    const isElectron = window.electron && window.electron.isElectron;
+    if (!isElectron) {
+      // Browser environment: load the PDF URL directly to preserve Content-Disposition filename
+      setPreviewBlobUrl(`/api/invoices/pdf/${previewInvoiceId}/`);
+      setPreviewLoading(false);
+      return;
+    }
+
+    // Electron environment: fetch as blob to bypass CORS/mixed content iframe restrictions
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
       .then(blob => {
         if (!cancelled) {
-          const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+          const selected = invoices.find(inv => inv.id === previewInvoiceId);
+          const cleanBillNo = (selected?.bill_number || 'Preview').replace(/\//g, '_');
+          const prefix = selected?.is_challan ? 'Challan' : 'Invoice';
+          const filename = `${prefix}_${cleanBillNo}.pdf`;
+          
+          // Set filename for Electron download dialog
+          if (window.electron && window.electron.setPreviewFilename) {
+            window.electron.setPreviewFilename(filename);
+          }
+
+          // Use File object to set default download filename inside chromium PDF viewer
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          const url = URL.createObjectURL(file);
           setPreviewBlobUrl(url);
         }
       })
@@ -344,7 +366,20 @@ export default function InvoiceHistory({ triggerAlert }) {
         if (!cancelled) setPreviewLoading(false);
       });
     return () => { cancelled = true; };
-  }, [previewInvoiceId]);
+  }, [previewInvoiceId, invoices]);
+
+  const handleDownloadPreviewPdf = () => {
+    if (!previewBlobUrl) return;
+    const selected = invoices.find(inv => inv.id === previewInvoiceId);
+    const cleanBillNo = (selected?.bill_number || 'Preview').replace(/\//g, '_');
+    const prefix = selected?.is_challan ? 'Challan' : 'Invoice';
+    const link = document.createElement('a');
+    link.href = previewBlobUrl;
+    link.setAttribute('download', `${prefix}_${cleanBillNo}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   // Escape key listener to close modal safely
   useEffect(() => {
@@ -610,7 +645,8 @@ export default function InvoiceHistory({ triggerAlert }) {
         </div>
 
         {/* Invoices List Table */}
-        <div className="table-responsive flex-grow-1 w-100 m-0 p-0" style={{ width: '100%', minWidth: '100%' }}>
+        <div className="content-card shadow-sm p-0">
+          <div className="w-100 m-0 p-0" style={{ width: '100%', minWidth: '100%' }}>
           {loading ? (
             <div className="text-center py-5">
               <div className="spinner-border text-primary" role="status">
@@ -618,10 +654,10 @@ export default function InvoiceHistory({ triggerAlert }) {
               </div>
             </div>
           ) : (
-            <table className="table table-hover align-middle w-100 m-0 history-table" style={{ width: '100%', minWidth: '100%', tableLayout: 'auto' }}>
+            <table className="table table-hover align-middle w-100 m-0 dashboard-table" style={{ width: '100%', minWidth: '100%', tableLayout: 'auto' }}>
               <thead>
                 <tr>
-                  <th className="col-nowrap" style={{ width: '40px' }}>
+                  <th className="col-nowrap" style={{ width: '40px', borderTopLeftRadius: '16px' }}>
                     <input
                       type="checkbox"
                       className="form-check-input"
@@ -639,7 +675,7 @@ export default function InvoiceHistory({ triggerAlert }) {
                   <th className="col-nowrap" style={{ width: '8%' }}>Check Date</th>
                   <th className="col-nowrap" style={{ width: '6%' }}>TDS</th>
                   <th className="col-nowrap" style={{ width: '9%' }}>Total<br />Amount</th>
-                  <th className="text-center col-nowrap" style={{ width: '80px' }}>Actions</th>
+                  <th className="text-center col-nowrap" style={{ width: '80px', borderTopRightRadius: '16px' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -768,18 +804,7 @@ export default function InvoiceHistory({ triggerAlert }) {
                                 <i className="bi bi-file-pdf text-primary"></i> Download PDF
                               </button>
                             </li>
-                            <li>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigate(`/create-invoice?duplicate_id=${inv.id}&as_challan=false`);
-                                  setOpenDropdownRowId(null);
-                                }}
-                                className="dropdown-item d-flex align-items-center gap-2"
-                              >
-                                <i className="bi bi-file-earmark-plus text-info"></i> Copy as Invoice
-                              </button>
-                            </li>
+
                             <li>
                               <button
                                 type="button"
@@ -849,6 +874,7 @@ export default function InvoiceHistory({ triggerAlert }) {
               )}
             </table>
           )}
+        </div>
         </div>
       </div>
 
@@ -925,13 +951,23 @@ export default function InvoiceHistory({ triggerAlert }) {
                   ></iframe>
                 )}
               </div>
-              <div className="modal-footer border-0 py-2">
+              <div className="modal-footer border-0 py-2 d-flex justify-content-end gap-2 w-100">
                 <button
                   type="button"
                   onClick={() => setPreviewInvoiceId(null)}
                   className="btn btn-secondary btn-sm px-4"
+                  style={{ minWidth: '150px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   Close
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPreviewPdf}
+                  className="btn btn-primary btn-sm px-4"
+                  disabled={!previewBlobUrl}
+                  style={{ minWidth: '150px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <i className="bi bi-download me-1"></i> Download PDF
                 </button>
               </div>
             </div>

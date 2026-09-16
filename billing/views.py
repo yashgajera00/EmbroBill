@@ -1,4 +1,5 @@
 import json
+import re
 from decimal import Decimal, InvalidOperation
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
@@ -9,7 +10,7 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.clickjacking import xframe_options_exempt
 
-from .models import Company, Customer, Invoice, InvoiceItem
+from .models import Company, Customer, Invoice, InvoiceItem, DashboardItem
 from .forms import CompanyForm, CustomerForm, InvoiceForm
 from .utils import generate_invoice_pdf, generate_bulk_invoice_pdf, generate_challan_pdf, generate_bulk_challan_pdf, number_to_words_indian
 
@@ -53,6 +54,77 @@ def clean_decimal_value(val, field_name, required=False):
         print(f"Decimal conversion failed for field '{field_name}' with value: {original_val!r}")
         raise ValidationError({field_name: f"Invalid numeric value '{original_val}' for field '{field_name}'."})
 
+# ─── Per-Product Status Helpers ─────────────────────────────────────────
+
+def _mark_dashboard_products_done(billed_products, invoice_id):
+    """Mark specific products inside DashboardItem.products_json as 'Done' and link to invoice_id."""
+    if not billed_products:
+        return
+    # Group by item_id
+    items_map = {}
+    for bp in billed_products:
+        item_id = bp.get('item_id')
+        product_index = bp.get('product_index')
+        if item_id is not None and product_index is not None:
+            items_map.setdefault(item_id, []).append(product_index)
+    
+    for item_id, indices in items_map.items():
+        try:
+            db_item = DashboardItem.objects.get(id=item_id)
+        except DashboardItem.DoesNotExist:
+            continue
+        products = []
+        try:
+            products = json.loads(db_item.products_json) if db_item.products_json else []
+        except Exception:
+            pass
+        if not products:
+            products = [{
+                'design': db_item.design or '',
+                'lot_no': db_item.lot_no or '',
+                'meter': float(db_item.meter or 0),
+                'qty': float(db_item.qty or 0),
+                'rate': float(db_item.rate or 0),
+                'hsn_code': db_item.hsn_code or '',
+                'status': db_item.status or 'Pending'
+            }]
+        for idx in indices:
+            if 0 <= idx < len(products):
+                products[idx]['status'] = 'Done'
+                products[idx]['invoice_id'] = invoice_id
+        # Recalculate overall status
+        all_done = all(p.get('status') == 'Done' for p in products)
+        db_item.status = 'Done' if all_done else 'Pending'
+        db_item.products_json = json.dumps(products)
+        db_item.save()
+
+
+def _revert_dashboard_products_for_invoice(invoice_id):
+    """Revert all dashboard products linked to a given invoice_id back to 'Pending'."""
+    if not invoice_id:
+        return
+    # Search all dashboard items for products linked to this invoice
+    for db_item in DashboardItem.objects.all():
+        products = []
+        try:
+            products = json.loads(db_item.products_json) if db_item.products_json else []
+        except Exception:
+            continue
+        if not products:
+            continue
+        changed = False
+        for p in products:
+            if p.get('invoice_id') == invoice_id:
+                p['status'] = 'Pending'
+                p.pop('invoice_id', None)
+                changed = True
+        if changed:
+            all_done = all(p.get('status') == 'Done' for p in products)
+            db_item.status = 'Done' if all_done else 'Pending'
+            db_item.products_json = json.dumps(products)
+            db_item.save()
+
+
 # Decorator to enforce JSON API authentication status
 def api_login_required(view_func):
     def _wrapped_view_func(request, *args, **kwargs):
@@ -60,6 +132,58 @@ def api_login_required(view_func):
             return JsonResponse({'error': 'Authentication required.'}, status=401)
         return view_func(request, *args, **kwargs)
     return _wrapped_view_func
+
+def increment_bill_number(bill_no):
+    if not bill_no:
+        return "1"
+    # Find trailing digits
+    match = re.search(r'(.*?)(\d+)$', bill_no)
+    if match:
+        prefix, digits = match.groups()
+        length = len(digits)
+        next_num = int(digits) + 1
+        return f"{prefix}{str(next_num).zfill(length)}"
+    else:
+        # If no trailing digits, append "1"
+        return f"{bill_no}1"
+
+def get_next_bill_number():
+    company = Company.objects.first()
+    prefix = getattr(company, 'bill_no_prefix', '') or ''
+    prefix = prefix.strip()
+    
+    try:
+        start_num = int(getattr(company, 'bill_no_start_number', 1) or 1)
+    except (ValueError, TypeError):
+        start_num = 1
+        
+    start_bill_no = f"{prefix}{start_num}"
+    
+    # Check if there are any invoices starting with this prefix
+    invoices_with_prefix = Invoice.objects.filter(is_challan=False, bill_number__startswith=prefix)
+    
+    if not invoices_with_prefix.exists():
+        return start_bill_no
+        
+    # Check if the start_bill_no itself has been used yet
+    if not invoices_with_prefix.filter(bill_number=start_bill_no).exists():
+        return start_bill_no
+        
+    # Get the latest invoice that starts with this prefix
+    latest_invoice = invoices_with_prefix.exclude(bill_number=None).exclude(bill_number='').order_by('-id').first()
+    if latest_invoice:
+        bill_no = latest_invoice.bill_number
+        if prefix and bill_no.startswith(prefix):
+            suffix = bill_no[len(prefix):]
+            return f"{prefix}{increment_bill_number(suffix)}"
+        return increment_bill_number(bill_no)
+        
+    return start_bill_no
+
+@api_login_required
+def next_bill_number_view(request):
+    next_bill = get_next_bill_number()
+    return JsonResponse({'next_bill_number': next_bill})
 
 # Serialization Helpers
 def serialize_customer(customer):
@@ -84,7 +208,10 @@ def serialize_company(company):
         'ifsc_code': company.ifsc_code,
         'terms_conditions': company.terms_conditions,
         'plan_expiry_date': company.plan_expiry_date.isoformat() if company.plan_expiry_date else '',
-        'user_id': company.user_id
+        'user_id': company.user_id,
+        'bill_no_prefix': company.bill_no_prefix or '',
+        'bill_no_start_number': company.bill_no_start_number or 1,
+        'default_hsn_code': company.default_hsn_code or ''
     }
 
 def serialize_invoice(invoice):
@@ -105,6 +232,9 @@ def serialize_invoice(invoice):
         'discount_percent': float(invoice.discount_percent),
         'discount_amount': float(invoice.discount_amount),
         'blouse_charge': float(invoice.blouse_charge),
+        'extra_charges': float(invoice.extra_charges),
+        'extra_charges_type': invoice.extra_charges_type or 'add',
+        'extra_charges_reason': invoice.extra_charges_reason or '',
         'subtotal': float(invoice.subtotal),
         'sgst_percent': float(invoice.sgst_percent),
         'sgst_amount': float(invoice.sgst_amount),
@@ -120,6 +250,8 @@ def serialize_invoice(invoice):
         'check_no': invoice.check_no or '',
         'check_date': invoice.check_date.isoformat() if invoice.check_date else '',
         'tds': float(invoice.tds or 0),
+        'dashboard_item_id': invoice.dashboard_item_id,
+        'dashboard_item_date': invoice.dashboard_item.date.isoformat() if (invoice.dashboard_item and invoice.dashboard_item.date) else '',
         'created_at': invoice.created_at.isoformat() if invoice.created_at else ''
     }
 
@@ -249,6 +381,24 @@ def change_password(request):
             update_session_auth_hash(request, user)
             
             return JsonResponse({'success': True, 'message': 'Password changed successfully.'})
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Method not allowed.'}, status=405)
+
+@api_login_required
+def verify_password(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            password = data.get('password')
+            if not password:
+                return JsonResponse({'error': 'Password is required.'}, status=400)
+            
+            user = request.user
+            if user.check_password(password):
+                return JsonResponse({'success': True})
+            else:
+                return JsonResponse({'error': 'Incorrect password.'}, status=400)
         except Exception as e:
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
@@ -587,7 +737,7 @@ def invoice_list(request):
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
     
-    invoices = Invoice.objects.all().order_by('-bill_date', '-created_at')
+    invoices = Invoice.objects.all().prefetch_related('items').order_by('-bill_date', '-created_at')
     
     if q_bill:
         invoices = invoices.filter(bill_number__icontains=q_bill)
@@ -612,7 +762,8 @@ def invoice_list(request):
             'check_no': inv.check_no or '',
             'check_date': inv.check_date.isoformat() if inv.check_date else '',
             'tds': float(inv.tds or 0),
-            'is_challan': inv.is_challan
+            'is_challan': inv.is_challan,
+            'items': [serialize_invoice_item(item) for item in inv.items.all()]
         })
     return JsonResponse(serialized, safe=False)
 
@@ -628,6 +779,7 @@ def invoice_add(request):
                 ('discount_percent', False),
                 ('discount_amount', False),
                 ('blouse_charge', False),
+                ('extra_charges', False),
                 ('subtotal', False),
                 ('sgst_percent', False),
                 ('sgst_amount', False),
@@ -656,6 +808,11 @@ def invoice_add(request):
             if form.is_valid():
                 with transaction.atomic():
                     invoice = form.save(commit=False)
+                    dashboard_item_id = data.get('dashboard_item_id')
+                    if dashboard_item_id:
+                        invoice.dashboard_item_id = dashboard_item_id
+                    if not invoice.is_challan:
+                        invoice.bill_number = get_next_bill_number()
                     if invoice.customer:
                         invoice.customer_name = invoice.customer.name
                         invoice.customer_address = invoice.customer.address
@@ -666,6 +823,19 @@ def invoice_add(request):
                         invoice.customer_gst_number = (data.get('customer_gst_number') or '').strip()
                     invoice.amount_in_words = number_to_words_indian(invoice.amount)
                     invoice.save()
+
+                    # Mark individual dashboard products as 'Done'
+                    billed_products = data.get('billed_products', [])
+                    if billed_products:
+                        _mark_dashboard_products_done(billed_products, invoice.id)
+                    elif dashboard_item_id:
+                        # Fallback: mark entire item done (legacy single-product behavior)
+                        try:
+                            db_item = DashboardItem.objects.get(id=dashboard_item_id)
+                            db_item.status = 'Done'
+                            db_item.save()
+                        except DashboardItem.DoesNotExist:
+                            pass
                     
                     for item in items_data:
                         # Sanitize item decimal fields
@@ -712,6 +882,7 @@ def invoice_edit(request, pk):
                 ('discount_percent', False),
                 ('discount_amount', False),
                 ('blouse_charge', False),
+                ('extra_charges', False),
                 ('subtotal', False),
                 ('sgst_percent', False),
                 ('sgst_amount', False),
@@ -751,6 +922,12 @@ def invoice_edit(request, pk):
                     invoice.amount_in_words = number_to_words_indian(invoice.amount)
                     invoice.save()
                     
+                    # Revert previously linked dashboard products, then apply new ones
+                    _revert_dashboard_products_for_invoice(invoice.id)
+                    billed_products = data.get('billed_products', [])
+                    if billed_products:
+                        _mark_dashboard_products_done(billed_products, invoice.id)
+
                     # Delete old items and write new ones
                     invoice.items.all().delete()
                     for item in items_data:
@@ -870,7 +1047,22 @@ def invoice_delete(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
     if request.method == 'POST':
         bill_number = invoice.bill_number
-        invoice.delete()
+        with transaction.atomic():
+            # Revert per-product statuses linked to this invoice
+            _revert_dashboard_products_for_invoice(invoice.id)
+            # Fallback: also revert the dashboard item FK if present
+            if invoice.dashboard_item:
+                # Only reset to Pending if no products are individually tracked
+                products = []
+                try:
+                    products = json.loads(invoice.dashboard_item.products_json) if invoice.dashboard_item.products_json else []
+                except Exception:
+                    pass
+                has_any_invoice_link = any(p.get('invoice_id') for p in products)
+                if not has_any_invoice_link:
+                    invoice.dashboard_item.status = 'Pending'
+                    invoice.dashboard_item.save()
+            invoice.delete()
         return JsonResponse({'success': True, 'message': f"Invoice {bill_number} deleted successfully."})
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
@@ -914,3 +1106,152 @@ def invoice_pdf_bulk(request):
     response = HttpResponse(pdf_data, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+# ─── Dashboard Items API ───────────────────────────────────────────────
+
+def serialize_dashboard_item(item):
+    products = []
+    if item.products_json:
+        try:
+            products = json.loads(item.products_json)
+        except Exception:
+            pass
+    if not products:
+        products = [{
+            'design': item.design or '',
+            'lot_no': item.lot_no or '',
+            'meter': float(item.meter or 0),
+            'qty': float(item.qty or 0),
+            'rate': float(item.rate or 0),
+            'hsn_code': item.hsn_code or '',
+            'status': item.status or 'Pending'
+        }]
+    
+    total_qty = sum(float(p.get('qty') or 0) for p in products)
+    total_amount = sum(float(p.get('qty') or 0) * float(p.get('rate') or 0) for p in products)
+    total_meter = sum(float(p.get('meter') or 0) for p in products)
+    
+    design_str = ", ".join(p.get('design', '') for p in products if p.get('design'))
+    if not design_str and item.design:
+        design_str = item.design
+        
+    return {
+        'id': item.id,
+        'customer_name': item.customer_name,
+        'date': item.date.isoformat() if hasattr(item.date, 'isoformat') else (item.date or ''),
+        'design': design_str,
+        'qty': total_qty,
+        'rate': float(products[0].get('rate') or 0) if len(products) == 1 else 0.0,
+        'meter': total_meter,
+        'total': total_amount,
+        'status': item.status,
+        'p_ch_no': item.p_ch_no,
+        'lot_no': products[0].get('lot_no', '') if len(products) == 1 else '',
+        'gst_number': item.gst_number,
+        'billing_address': item.billing_address,
+        'hsn_code': products[0].get('hsn_code', '') if len(products) == 1 else '',
+        'broker': item.broker,
+        'products': products,
+    }
+
+@api_login_required
+def dashboard_items_list(request):
+    items = DashboardItem.objects.all()
+    return JsonResponse([serialize_dashboard_item(i) for i in items], safe=False)
+
+@api_login_required
+def dashboard_item_add(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            products = data.get('products', [])
+            if not products:
+                products = [{
+                    'design': (data.get('design') or '').strip(),
+                    'lot_no': (data.get('lot_no') or '').strip(),
+                    'meter': float(data.get('meter', 0)),
+                    'qty': float(data.get('qty', 0)),
+                    'rate': float(data.get('rate', 0)),
+                    'hsn_code': (data.get('hsn_code') or '').strip()
+                }]
+                
+            total_qty = sum(float(p.get('qty') or 0) for p in products)
+            total_amount = sum(float(p.get('qty') or 0) * float(p.get('rate') or 0) for p in products)
+            total_meter = sum(float(p.get('meter') or 0) for p in products)
+            first_p = products[0] if products else {}
+            
+            item = DashboardItem.objects.create(
+                customer_name=(data.get('customer_name') or '').strip(),
+                date=data.get('date'),
+                design=(first_p.get('design') or '').strip(),
+                qty=total_qty,
+                rate=float(first_p.get('rate') or 0),
+                meter=total_meter,
+                total=total_amount,
+                status=data.get('status', 'Pending'),
+                p_ch_no=(data.get('p_ch_no') or '').strip(),
+                lot_no=(first_p.get('lot_no') or '').strip(),
+                gst_number=(data.get('gst_number') or '').strip(),
+                billing_address=(data.get('billing_address') or '').strip(),
+                hsn_code=(first_p.get('hsn_code') or '').strip(),
+                broker=(data.get('broker') or '').strip(),
+                products_json=json.dumps(products)
+            )
+            return JsonResponse(serialize_dashboard_item(item), status=201)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Method not allowed.'}, status=405)
+
+@api_login_required
+def dashboard_item_edit(request, pk):
+    item = get_object_or_404(DashboardItem, pk=pk)
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            products = data.get('products', [])
+            if not products:
+                products = [{
+                    'design': (data.get('design') or '').strip(),
+                    'lot_no': (data.get('lot_no') or '').strip(),
+                    'meter': float(data.get('meter', 0)),
+                    'qty': float(data.get('qty', 0)),
+                    'rate': float(data.get('rate', 0)),
+                    'hsn_code': (data.get('hsn_code') or '').strip()
+                }]
+                
+            total_qty = sum(float(p.get('qty') or 0) for p in products)
+            total_amount = sum(float(p.get('qty') or 0) * float(p.get('rate') or 0) for p in products)
+            total_meter = sum(float(p.get('meter') or 0) for p in products)
+            first_p = products[0] if products else {}
+            
+            item.customer_name = (data.get('customer_name') or item.customer_name).strip()
+            item.date = data.get('date', item.date)
+            item.design = (first_p.get('design') or '').strip()
+            item.qty = total_qty
+            item.rate = float(first_p.get('rate') or 0)
+            item.meter = total_meter
+            item.total = total_amount
+            item.status = data.get('status', item.status)
+            item.p_ch_no = (data.get('p_ch_no') or '').strip()
+            item.lot_no = (first_p.get('lot_no') or '').strip()
+            item.gst_number = (data.get('gst_number') or '').strip()
+            item.billing_address = (data.get('billing_address') or '').strip()
+            item.hsn_code = (first_p.get('hsn_code') or '').strip()
+            item.broker = (data.get('broker') or '').strip()
+            item.products_json = json.dumps(products)
+            item.save()
+            return JsonResponse(serialize_dashboard_item(item))
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Method not allowed.'}, status=405)
+
+@api_login_required
+def dashboard_item_delete(request, pk):
+    item = get_object_or_404(DashboardItem, pk=pk)
+    if request.method == 'POST':
+        if item.status == 'Done':
+            return JsonResponse({'error': 'Done items cannot be deleted.'}, status=400)
+        item.delete()
+        return JsonResponse({'success': True})
+    return JsonResponse({'error': 'Method not allowed.'}, status=405)

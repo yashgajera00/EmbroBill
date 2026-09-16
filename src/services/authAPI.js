@@ -16,6 +16,10 @@ export const authAPI = {
   changePassword: async (oldPassword, newPassword) => {
     const response = await api.post('/change-password/', { old_password: oldPassword, new_password: newPassword });
     return response.data;
+  },
+  verifyPassword: async (password) => {
+    const response = await api.post('/verify-password/', { password });
+    return response.data;
   }
 };
 

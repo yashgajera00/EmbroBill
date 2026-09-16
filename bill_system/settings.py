@@ -5,18 +5,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure-textile-billing-secret-key-change-in-prod'
 
-DEBUG = False
+DEBUG = True
 
-ALLOWED_HOSTS = [
-    "embrobill.pythonanywhere.com",
-]
+ALLOWED_HOSTS = ['*']
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://embrobill.pythonanywhere.com",
-
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001',
+    'http://localhost:3002',
+    'http://127.0.0.1:3002',
+    'http://localhost:3003',
+    'http://127.0.0.1:3003',
+    'http://localhost:3004',
+    'http://127.0.0.1:3004',
+    'http://localhost:3005',
+    'http://127.0.0.1:3005',]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -74,8 +79,9 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = []
-
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, 'static'),
+]
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 LOGIN_URL = 'login'

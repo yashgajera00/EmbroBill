@@ -566,4 +566,117 @@ class BillingSystemTests(TestCase):
             self.assertIsNotNone(called_kwargs['context'])
 
 
+class AutoIncrementBillNumberTests(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(
+            address="Surat",
+            phone="9876543210"
+        )
+        self.customer = Customer.objects.create(
+            name="Test Customer"
+        )
+
+    def test_increment_bill_number_helper(self):
+        from billing.views import increment_bill_number
+        self.assertEqual(increment_bill_number("100"), "101")
+        self.assertEqual(increment_bill_number("INV-001"), "INV-002")
+        self.assertEqual(increment_bill_number("EB/24-25/045"), "EB/24-25/046")
+        self.assertEqual(increment_bill_number("NO_DIGITS"), "NO_DIGITS1")
+        self.assertEqual(increment_bill_number(None), "1")
+        self.assertEqual(increment_bill_number(""), "1")
+
+    def test_get_next_bill_number_empty_db(self):
+        from billing.views import get_next_bill_number
+        # No setting configured
+        self.assertEqual(get_next_bill_number(), "1")
+        
+        # Configure starting bill no to prefix "INV-" and start number 500
+        self.company.bill_no_prefix = "INV-"
+        self.company.bill_no_start_number = 500
+        self.company.save()
+        self.assertEqual(get_next_bill_number(), "INV-500")
+
+    def test_get_next_bill_number_with_invoices(self):
+        from billing.views import get_next_bill_number
+        self.company.bill_no_prefix = "INV-"
+        self.company.bill_no_start_number = 100
+        self.company.save()
+        
+        # Create an invoice
+        import datetime
+        Invoice.objects.create(
+            bill_number="INV-100",
+            customer=self.customer,
+            bill_date=datetime.date.today(),
+            is_challan=False
+        )
+        
+        # Next should be INV-101
+        self.assertEqual(get_next_bill_number(), "INV-101")
+        
+        # Create next invoice
+        Invoice.objects.create(
+            bill_number="INV-101",
+            customer=self.customer,
+            bill_date=datetime.date.today(),
+            is_challan=False
+        )
+        
+        # Next should be INV-102
+        self.assertEqual(get_next_bill_number(), "INV-102")
+
+        # Change settings start_bill_no to prefix "INV-" and start number 200
+        self.company.bill_no_prefix = "INV-"
+        self.company.bill_no_start_number = 200
+        self.company.save()
+        
+        # Next should jump to INV-200
+        self.assertEqual(get_next_bill_number(), "INV-200")
+        
+        # Create invoice with INV-200
+        Invoice.objects.create(
+            bill_number="INV-200",
+            customer=self.customer,
+            bill_date=datetime.date.today(),
+            is_challan=False
+        )
+        
+        # Next should be INV-201
+        self.assertEqual(get_next_bill_number(), "INV-201")
+
+    def test_verify_password(self):
+        from django.contrib.auth.models import User
+        # Create a test user
+        test_user = User.objects.create_user(username="testuser", password="secure_password_123")
+        
+        # Log in test user
+        self.client.login(username="testuser", password="secure_password_123")
+        
+        # Test success case
+        response = self.client.post(
+            '/api/verify-password/',
+            data={'password': 'secure_password_123'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {'success': True})
+        
+        # Test failure case (incorrect password)
+        response = self.client.post(
+            '/api/verify-password/',
+            data={'password': 'wrong_password'},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json(), {'error': 'Incorrect password.'})
+        
+        # Test failure case (missing password)
+        response = self.client.post(
+            '/api/verify-password/',
+            data={},
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 400)
+
+
 

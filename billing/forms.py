@@ -26,7 +26,8 @@ class CompanyForm(forms.ModelForm):
         model = Company
         fields = [
             'address', 'phone', 'state_code', 'bank_name', 
-            'account_number', 'ifsc_code', 'terms_conditions'
+            'account_number', 'ifsc_code', 'terms_conditions',
+            'bill_no_prefix', 'bill_no_start_number', 'default_hsn_code'
         ]
         widgets = {
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
@@ -36,6 +37,8 @@ class CompanyForm(forms.ModelForm):
             'account_number': forms.TextInput(attrs={'class': 'form-control'}),
             'ifsc_code': forms.TextInput(attrs={'class': 'form-control'}),
             'terms_conditions': forms.Textarea(attrs={'class': 'form-control', 'rows': 5}),
+            'bill_no_prefix': forms.TextInput(attrs={'class': 'form-control'}),
+            'bill_no_start_number': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
         }
 
     def __init__(self, *args, **kwargs):
@@ -74,9 +77,9 @@ class InvoiceForm(forms.ModelForm):
     class Meta:
         model = Invoice
         fields = [
-            'bill_number', 'customer', 'challan_no', 'broker', 'hsn_code', 'bill_date',
+            'bill_number', 'customer', 'dashboard_item', 'challan_no', 'broker', 'hsn_code', 'bill_date',
             'gross_amount', 'discount_percent', 'discount_amount',
-            'blouse_charge', 'subtotal', 'sgst_percent', 'sgst_amount',
+            'blouse_charge', 'extra_charges', 'extra_charges_type', 'extra_charges_reason', 'subtotal', 'sgst_percent', 'sgst_amount',
             'cgst_percent', 'cgst_amount', 'round_off', 'amount',
             'amount_in_words', 'is_challan', 'note_type', 'note_amount', 'bank_name', 'check_no', 'check_date', 'tds'
         ]
@@ -91,6 +94,9 @@ class InvoiceForm(forms.ModelForm):
             'discount_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'discount_amount': forms.NumberInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
             'blouse_charge': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'extra_charges': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
+            'extra_charges_type': forms.TextInput(attrs={'class': 'form-control'}),
+            'extra_charges_reason': forms.TextInput(attrs={'class': 'form-control'}),
             'subtotal': forms.NumberInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),
             'sgst_percent': forms.NumberInput(attrs={'class': 'form-control', 'step': '0.01'}),
             'sgst_amount': forms.NumberInput(attrs={'class': 'form-control', 'readonly': 'readonly'}),

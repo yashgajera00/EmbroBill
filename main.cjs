@@ -1,10 +1,16 @@
-const { app, BrowserWindow, protocol, dialog, session, screen } = require('electron');
+const { app, BrowserWindow, protocol, dialog, session, screen, ipcMain } = require('electron');
 const { spawn, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const netSocket = require('net');
 const http = require('http');
 const os = require('os');
+
+// Disable hardware acceleration globally before the app is ready.
+// This forces Chromium to use software rasterization (CPU rendering),
+// which resolves inconsistent, flickering, or clipped CSS animation rendering
+// on Windows 7 systems with old/unsupported GPU drivers.
+app.disableHardwareAcceleration();
 
 // Windows version support check (requires Windows 7 SP1 or newer)
 function isWindowsVersionSupported() {
@@ -46,6 +52,12 @@ if (!isWindowsVersionSupported()) {
 
 let mainWindow = null;
 let djangoProcess = null;
+
+let lastPreviewFilename = '';
+
+ipcMain.on('set-preview-filename', (event, filename) => {
+  lastPreviewFilename = filename;
+});
 
 const DJANGO_PORT = 8000;
 
@@ -321,6 +333,8 @@ try {
   logToFile(`[Cookie Jar] Error loading persistent cookies: ${e.message}`);
 }
 
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+
 app.whenReady().then(() => {
   // Clear session cache and storage caches on startup to prevent loading old cached frontend build
   if (session.defaultSession) {
@@ -335,6 +349,14 @@ app.whenReady().then(() => {
       logToFile('[Session] Storage caches cleared successfully.');
     }).catch(err => {
       logToFile(`[Session] Failed to clear storage caches: ${err.message}`);
+    });
+
+    session.defaultSession.on('will-download', (event, item, webContents) => {
+      if (lastPreviewFilename) {
+        item.setSaveDialogOptions({
+          defaultPath: lastPreviewFilename
+        });
+      }
     });
   }
 
@@ -507,7 +529,8 @@ app.whenReady().then(() => {
         '.woff2': 'font/woff2',
         '.ttf': 'font/ttf',
         '.otf': 'font/otf',
-        '.pdf': 'application/pdf'
+        '.pdf': 'application/pdf',
+        '.mp4': 'video/mp4'
       };
       const contentType = mimeTypes[ext] || 'application/octet-stream';
       callback({

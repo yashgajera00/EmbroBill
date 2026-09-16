@@ -15,6 +15,9 @@ class Company(models.Model):
                 "4) Interest will be charged @ 24% p.a.\n"
                 "5) Subject to SURAT Jurisdiction."
     )
+    bill_no_prefix = models.CharField(max_length=50, blank=True, null=True, default="")
+    bill_no_start_number = models.IntegerField(default=1)
+    default_hsn_code = models.CharField(max_length=50, blank=True, null=True, default="")
 
     @property
     def company_name(self):
@@ -88,6 +91,7 @@ class Customer(models.Model):
 class Invoice(models.Model):
     bill_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
+    dashboard_item = models.ForeignKey('DashboardItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     customer_name = models.CharField(max_length=150, blank=True, default="")
     customer_address = models.TextField(blank=True, default="")
     customer_gst_number = models.CharField(max_length=15, blank=True, default="")
@@ -100,6 +104,9 @@ class Invoice(models.Model):
     discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     blouse_charge = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    extra_charges = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, blank=True)
+    extra_charges_type = models.CharField(max_length=10, default='add', choices=[('add', 'Add'), ('cut', 'Cut')], blank=True)
+    extra_charges_reason = models.TextField(default='', blank=True)
     subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     
     sgst_percent = models.DecimalField(max_digits=5, decimal_places=2, default=2.50)
@@ -152,3 +159,31 @@ class InvoiceItem(models.Model):
 
     def __str__(self):
         return f"Item in {self.invoice.bill_number} - Design {self.design}"
+
+
+class DashboardItem(models.Model):
+    customer_name = models.CharField(max_length=150)
+    date = models.DateField()
+    design = models.CharField(max_length=100, blank=True, default="")
+    qty = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    rate = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    meter = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    total = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
+    status = models.CharField(max_length=20, default='Pending', choices=[('Pending', 'Pending'), ('Done', 'Done')])
+    
+    # New metadata fields (saved to database only, not displayed in main table)
+    p_ch_no = models.CharField(max_length=50, blank=True, default="")
+    lot_no = models.CharField(max_length=50, blank=True, default="")
+    gst_number = models.CharField(max_length=15, blank=True, default="")
+    billing_address = models.TextField(blank=True, default="")
+    hsn_code = models.CharField(max_length=50, blank=True, default="")
+    broker = models.CharField(max_length=100, blank=True, default="")
+    products_json = models.TextField(default="[]", blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-id']
+
+    def __str__(self):
+        return f"Dashboard: {self.customer_name} - {self.design}"

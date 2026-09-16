@@ -17,7 +17,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
     ifsc_code: '',
     terms_conditions: '',
     plan_expiry_date: '',
-    user_id: ''
+    user_id: '',
+    bill_no_prefix: '',
+    bill_no_start_number: 1,
+    default_hsn_code: ''
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,6 +34,76 @@ export default function Settings({ user, onLogout, triggerAlert }) {
   const [licenseKey, setLicenseKey] = useState('');
   const [activating, setActivating] = useState(false);
   const navigate = useNavigate();
+
+  const [isBillFormatLocked, setIsBillFormatLocked] = useState(true);
+  const [isHsnLocked, setIsHsnLocked] = useState(true);
+  const [unlockTarget, setUnlockTarget] = useState(null); // 'bill' or 'hsn'
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+
+  const handleUnlockClick = async () => {
+    if (!isBillFormatLocked) {
+      setIsBillFormatLocked(true);
+      setSaving(true);
+      try {
+        await settingsAPI.save(formData);
+        triggerAlert('Bill format settings locked and saved successfully.', 'success');
+      } catch (err) {
+        console.error('Failed to save settings:', err);
+        triggerAlert(err.response?.data?.error || 'Error saving settings.', 'danger');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      setUnlockTarget('bill');
+      setShowUnlockModal(true);
+    }
+  };
+
+  const handleHsnUnlockClick = async () => {
+    if (!isHsnLocked) {
+      setIsHsnLocked(true);
+      setSaving(true);
+      try {
+        await settingsAPI.save(formData);
+        triggerAlert('Default HSN Code settings locked and saved successfully.', 'success');
+      } catch (err) {
+        console.error('Failed to save settings:', err);
+        triggerAlert(err.response?.data?.error || 'Error saving settings.', 'danger');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      setUnlockTarget('hsn');
+      setShowUnlockModal(true);
+    }
+  };
+
+  const handleUnlockSubmit = async (e) => {
+    e.preventDefault();
+    setUnlockError('');
+    try {
+      const response = await authAPI.verifyPassword(unlockPassword);
+      if (response && response.success) {
+        if (unlockTarget === 'bill') {
+          setIsBillFormatLocked(false);
+          triggerAlert('Bill format settings unlocked for editing.', 'success');
+        } else if (unlockTarget === 'hsn') {
+          setIsHsnLocked(false);
+          triggerAlert('Default HSN Code settings unlocked for editing.', 'success');
+        }
+        setShowUnlockModal(false);
+        setUnlockPassword('');
+        setUnlockTarget(null);
+      } else {
+        setUnlockError('Verification failed. Invalid password.');
+      }
+    } catch (err) {
+      console.error(err);
+      setUnlockError(err.response?.data?.error || 'Incorrect password.');
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -48,7 +121,10 @@ export default function Settings({ user, onLogout, triggerAlert }) {
           ifsc_code: data.ifsc_code || '',
           terms_conditions: data.terms_conditions || '',
           plan_expiry_date: data.plan_expiry_date || '',
-          user_id: data.user_id || ''
+          user_id: data.user_id || '',
+          bill_no_prefix: data.bill_no_prefix || '',
+          bill_no_start_number: data.bill_no_start_number !== undefined ? data.bill_no_start_number : 1,
+          default_hsn_code: data.default_hsn_code || ''
         });
       }
     } catch (err) {
@@ -110,7 +186,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
     try {
       await settingsAPI.save(formData);
       triggerAlert('Company settings saved successfully.', 'success');
-      navigate('/create-invoice');
     } catch (err) {
       console.error('Failed to save settings:', err);
       triggerAlert(err.response?.data?.error || 'Error saving settings.', 'danger');
@@ -252,6 +327,68 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                 onChange={handleChange}
                 disabled={saving}
               />
+            </div>
+            <div className="col-md-5 col-12">
+              <label className="form-label text-uppercase fw-bold invoice-form-label">Bill Format (Prefix & Start Number)</label>
+              <div className="input-group">
+                <input
+                  type="text"
+                  name="bill_no_prefix"
+                  className="form-control text-center"
+                  value={formData.bill_no_prefix}
+                  onChange={handleChange}
+                  disabled={saving || isBillFormatLocked}
+                />
+                <input
+                  type="number"
+                  name="bill_no_start_number"
+                  className="form-control text-center no-spinner"
+                  value={formData.bill_no_start_number}
+                  onChange={handleChange}
+                  disabled={saving || isBillFormatLocked}
+                  min="1"
+                />
+                <button
+                  type="button"
+                  className={`btn ${isBillFormatLocked ? 'btn-outline-secondary' : 'btn-success'}`}
+                  onClick={handleUnlockClick}
+                  disabled={saving}
+                  title={isBillFormatLocked ? "Unlock fields to edit" : "Lock fields"}
+                >
+                  {isBillFormatLocked ? (
+                    <><i className="bi bi-lock-fill me-1"></i> Unlock</>
+                  ) : (
+                    <><i className="bi bi-unlock-fill me-1"></i> Lock</>
+                  )}
+                </button>
+              </div>
+            </div>
+            <div className="col-md-3 col-12">
+              <label className="form-label text-uppercase fw-bold invoice-form-label">Default HSN Code</label>
+              <div className="input-group">
+                <input
+                  type="text"
+                  name="default_hsn_code"
+                  className="form-control"
+                  value={formData.default_hsn_code}
+                  onChange={handleChange}
+                  disabled={saving || isHsnLocked}
+                  placeholder="e.g. 5810"
+                />
+                <button
+                  type="button"
+                  className={`btn ${isHsnLocked ? 'btn-outline-secondary' : 'btn-success'}`}
+                  onClick={handleHsnUnlockClick}
+                  disabled={saving}
+                  title={isHsnLocked ? "Unlock Default HSN Code to edit" : "Lock Default HSN Code"}
+                >
+                  {isHsnLocked ? (
+                    <><i className="bi bi-lock-fill me-1"></i> Unlock</>
+                  ) : (
+                    <><i className="bi bi-unlock-fill me-1"></i> Lock</>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -756,6 +893,57 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unlock Bill Format Password Modal */}
+      {showUnlockModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <form onSubmit={handleUnlockSubmit} className="modal-content border-0 shadow-lg text-start" style={{ borderRadius: '16px', fontFamily: 'var(--font-primary)' }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-shield-lock-fill me-2 text-danger"></i> Security Verification
+                </h5>
+                <button type="button" className="btn-close" onClick={() => { setShowUnlockModal(false); setUnlockPassword(''); setUnlockError(''); }} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-3 text-start">
+                  To edit the Bill Prefix or Starting Number sequence, please enter your account password.
+                </p>
+                <div className="mb-3">
+                  <label className="form-label fw-semibold small text-uppercase">Account Password</label>
+                  <input
+                    type="password"
+                    className="form-control"
+                    value={unlockPassword}
+                    onChange={(e) => setUnlockPassword(e.target.value)}
+                    required
+                    autoFocus
+                    placeholder="Enter password"
+                  />
+                  {unlockError && <div className="text-danger small mt-1">{unlockError}</div>}
+                </div>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => { setShowUnlockModal(false); setUnlockPassword(''); setUnlockError(''); }}
+                  className="btn btn-light border btn-sm px-3"
+                  style={{ borderRadius: '8px' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-danger btn-sm px-4"
+                  style={{ borderRadius: '8px' }}
+                >
+                  Verify
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

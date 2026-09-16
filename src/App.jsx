@@ -8,7 +8,9 @@ import Settings from './pages/Settings';
 import InvoiceHistory from './pages/InvoiceHistory';
 import CreateInvoice from './pages/CreateInvoice';
 import CreateChallan from './pages/CreateChallan';
-import thumbnail from './assets/thumbnail.jpg';
+import Dashboard from './pages/Dashboard';
+import logoIcon from './assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
+import logoText from './assets/EmbroBill.png';
 
 // Protected Route wrapper component
 function ProtectedRoute({ user, loading }) {
@@ -27,6 +29,30 @@ function ProtectedRoute({ user, loading }) {
   return <Outlet />;
 }
 
+function Splash({ fadeOut }) {
+  const taglineWords = ["Unique", "Billing", "&", "Embroidery", "Solutions"];
+
+  return (
+    <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
+      <div className="splash-content">
+        <img src={logoIcon} className="splash-logo-icon" alt="Logo Icon" />
+        <img src={logoText} className="splash-logo-text" alt="EmbroBill" />
+        <div className="splash-tagline">
+          {taglineWords.map((word, index) => (
+            <span
+              key={index}
+              className="tagline-word"
+              style={{ animationDelay: `${0.5 + index * 0.08}s` }}
+            >
+              {word}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,10 +66,9 @@ export default function App() {
   const [activating, setActivating] = useState(false);
   const [activationSuccessData, setActivationSuccessData] = useState(null);
 
-  // Manage splash screen timer based on sessionStorage cache
+  // Manage splash screen timer
   useEffect(() => {
-    const hasShown = sessionStorage.getItem('hasShownSplash');
-    const delay = hasShown ? 0 : 2000;
+    const delay = 1500;
 
     const timer = setTimeout(() => {
       setTimerDone(true);
@@ -52,17 +77,16 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Handle fading out of the splash screen once both timer and auth check are complete
+  // Handle fading out of the splash screen once timer is complete
   useEffect(() => {
-    if (timerDone && !loading) {
+    if (timerDone) {
       setFadeOut(true);
       const fadeTimer = setTimeout(() => {
         setShowSplash(false);
-        sessionStorage.setItem('hasShownSplash', 'true');
-      }, 500); // 500ms matches the transition duration in CSS
+      }, 300); // 300ms matches the transition duration in CSS
       return () => clearTimeout(fadeTimer);
     }
-  }, [timerDone, loading]);
+  }, [timerDone]);
 
   // Load active session status on mount
   useEffect(() => {
@@ -128,16 +152,10 @@ export default function App() {
     setAlert(null);
   };
 
-  if (showSplash) {
-    return (
-      <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
-        <img src={thumbnail} alt="EmbroBill Splash" className="splash-img" />
-      </div>
-    );
-  }
+  let mainContent;
 
   if (activationSuccessData) {
-    return (
+    mainContent = (
       <div className="d-flex justify-content-center align-items-center bg-light animate-fade-in" style={{ minHeight: '100vh', padding: '20px' }}>
         <div className="content-card shadow-lg text-start" style={{ maxWidth: '500px', width: '100%', borderRadius: '16px', padding: '30px' }}>
           <h4 className="fw-bold text-success text-center mb-4 d-flex align-items-center justify-content-center">
@@ -176,10 +194,8 @@ export default function App() {
         </div>
       </div>
     );
-  }
-
-  if (!usersExist) {
-    return (
+  } else if (!usersExist) {
+    mainContent = (
       <div className="d-flex justify-content-center align-items-center bg-light" style={{ minHeight: '100vh', padding: '20px' }}>
         <div className="content-card shadow-lg text-center" style={{ maxWidth: '500px', width: '100%', borderRadius: '16px', padding: '30px' }}>
           <h4 className="fw-bold text-primary mb-4 d-flex align-items-center justify-content-center">
@@ -227,44 +243,53 @@ export default function App() {
         </div>
       </div>
     );
+  } else {
+    mainContent = (
+      <BrowserRouter>
+        <Routes>
+          {/* Public login route */}
+          <Route
+            path="/login"
+            element={
+              user ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <Login onLoginSuccess={(username) => setUser({ username })} triggerAlert={triggerAlert} />
+              )
+            }
+          />
+
+          {/* Protected routes wrapped in main Layout */}
+          <Route element={<ProtectedRoute user={user} loading={loading} />}>
+            <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
+              {/* Index redirection */}
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+              {/* Dashboard route */}
+              <Route path="/dashboard" element={<Dashboard />} />
+
+              {/* Settings route */}
+              <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+
+              {/* Invoice routes */}
+              <Route path="/invoice-history" element={<InvoiceHistory triggerAlert={triggerAlert} />} />
+              <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
+              <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
+              <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />
+              <Route path="/challans/edit/:id" element={<CreateChallan triggerAlert={triggerAlert} mode="Edit" />} />
+            </Route>
+          </Route>
+
+          {/* Catch-all redirection */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    );
   }
 
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* Public login route */}
-        <Route
-          path="/login"
-          element={
-            user ? (
-              <Navigate to="/create-invoice" replace />
-            ) : (
-              <Login onLoginSuccess={(username) => setUser({ username })} triggerAlert={triggerAlert} />
-            )
-          }
-        />
+  if (showSplash) {
+    return <Splash fadeOut={fadeOut} />;
+  }
 
-        {/* Protected routes wrapped in main Layout */}
-        <Route element={<ProtectedRoute user={user} loading={loading} />}>
-          <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
-            {/* Index redirection */}
-            <Route path="/" element={<Navigate to="/create-invoice" replace />} />
-
-            {/* Settings route */}
-            <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
-
-            {/* Invoice routes */}
-            <Route path="/invoice-history" element={<InvoiceHistory triggerAlert={triggerAlert} />} />
-            <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
-            <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
-            <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />
-            <Route path="/challans/edit/:id" element={<CreateChallan triggerAlert={triggerAlert} mode="Edit" />} />
-          </Route>
-        </Route>
-
-        {/* Catch-all redirection */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+  return mainContent;
 }

@@ -9,6 +9,10 @@ export const invoiceAPI = {
     const response = await api.get(`/invoices/view/${id}/`);
     return response.data;
   },
+  getNextBillNumber: async () => {
+    const response = await api.get('/invoices/next-bill-number/');
+    return response.data;
+  },
   add: async (data) => {
     const response = await api.post('/invoices/add/', data);
     return response.data;

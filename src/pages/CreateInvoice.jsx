@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
 import customersAPI from '../services/customersAPI';
 import invoiceAPI from '../services/invoiceAPI';
 import settingsAPI from '../services/settingsAPI';
+import dashboardAPI from '../services/dashboardAPI';
 import { convertNumberToWords } from '../utils/numberToWords';
 import Rupee from '../utils/Rupee';
 import DateInput from '../utils/DateInput';
@@ -120,12 +121,16 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   const { id } = useParams();
   const location = useLocation();
 
-  // Search parameters for duplication check
+  // Search parameters for duplication check and dashboard item link
   const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const duplicateId = queryParams.get('duplicate_id');
+  const dashboardItemId = queryParams.get('dashboard_item_id');
 
   // Load state
   const [customers, setCustomers] = useState([]);
+  const [pendingDashboardItems, setPendingDashboardItems] = useState([]);
+  const [allDesigns, setAllDesigns] = useState([]);
+  const [selectedPendingItemId, setSelectedPendingItemId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
@@ -136,11 +141,28 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   const [rowToDelete, setRowToDelete] = useState(null);
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
+  const [previewBillNumber, setPreviewBillNumber] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [planExpiryDate, setPlanExpiryDate] = useState(null);
+  const [dashboardItemDate, setDashboardItemDate] = useState(null);
+  const [defaultHsnCode, setDefaultHsnCode] = useState('');
   const [showExpiryModal, setShowExpiryModal] = useState(false);
+  const [showDateErrorModal, setShowDateErrorModal] = useState(false);
+  const [showDifferentBrokerModal, setShowDifferentBrokerModal] = useState(false);
+  const [showDifferentHsnModal, setShowDifferentHsnModal] = useState(false);
   const [editingCell, setEditingCell] = useState(null); // { rowIndex: number, field: string }
+  const [showExtraChargesModal, setShowExtraChargesModal] = useState(false);
+  const [showDesignsModal, setShowDesignsModal] = useState(false);
+  const [modalProducts, setModalProducts] = useState([]);
+  const amountInputRef = useRef(null);
+  const [extraChargesList, setExtraChargesList] = useState([]);
+  const [chargeToDelete, setChargeToDelete] = useState(null);
+  const [extraChargesInput, setExtraChargesInput] = useState({
+    amount: '0.00',
+    type: '',
+    reason: ''
+  });
 
   // Form fields state
   const [invoiceForm, setInvoiceForm] = useState({
@@ -152,6 +174,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     broker: '',
     discount_percent: '0.00',
     blouse_charge: '0.00',
+    extra_charges: '0.00',
+    extra_charges_type: 'add',
+    extra_charges_reason: '',
     sgst_percent: '2.50',
     cgst_percent: '2.50',
     is_challan: false
@@ -163,6 +188,33 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     address: '',
     gst_number: ''
   });
+
+  const isLinkedToDashboard = !!selectedPendingItemId;
+  const isFormFieldsDisabled = mode === 'Add' && !selectedPendingItemId;
+
+  const handleDeselectPendingItem = () => {
+    handleCustomerSelectionChange("");
+    setSelectedPendingItemId(null);
+    setDashboardItemDate(null);
+    setInvoiceForm(prev => ({
+      ...prev,
+      hsn_code: defaultHsnCode || '',
+      broker: ''
+    }));
+    setItems([
+      {
+        p_ch_no: '',
+        lot_no: '',
+        design: '',
+        meter: '',
+        t_qty: '',
+        p_qty: '',
+        s_qty: '',
+        qty: '',
+        rate: ''
+      }
+    ]);
+  };
 
   // Filtered customers list for autocomplete search dropdown
   const filteredCustomers = useMemo(() => {
@@ -185,22 +237,317 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     }
   }, [customerForm.address]);
 
+  const fetchPendingDashboardItems = async () => {
+    try {
+      const list = await dashboardAPI.list();
+      const pending = (list || []).filter(item => {
+        // Include items where the overall status is Pending, OR where at least one product is still Pending
+        if (item.status === 'Pending') return true;
+        if (item.products && item.products.length > 0) {
+          return item.products.some(p => (p.status || 'Pending') !== 'Done');
+        }
+        return false;
+      });
+      setPendingDashboardItems(pending);
+      
+      // Extract unique design names from previous dashboard transactions
+      const designsSet = new Set();
+      (list || []).forEach(item => {
+        if (item.products && item.products.length > 0) {
+          item.products.forEach(p => {
+            if (p.design && p.design.trim()) {
+              designsSet.add(p.design.trim());
+            }
+          });
+        } else if (item.design && item.design.trim()) {
+          designsSet.add(item.design.trim());
+        }
+      });
+      setAllDesigns(Array.from(designsSet).sort());
+      
+      return list;
+    } catch (err) {
+      console.error('Failed to load pending items:', err);
+      return [];
+    }
+  };
+  
+  const openDesignsModalForCustomer = (customerName, pendingItems = pendingDashboardItems) => {
+    if (!customerName || !customerName.trim()) return;
+    const nameLower = customerName.trim().toLowerCase();
+    
+    // Find all matching pending items
+    const matches = pendingItems.filter(item => 
+      (item.customer_name || '').trim().toLowerCase() === nameLower
+    );
+
+    if (matches.length === 0) return;
+
+    // Flatten to list of products
+    const list = [];
+    matches.forEach(item => {
+      if (item.products && item.products.length > 0) {
+        item.products.forEach((p, pIdx) => {
+          // Skip products that are already Done
+          if ((p.status || 'Pending') === 'Done') return;
+          list.push({
+            id: `${item.id}-${pIdx}`,
+            itemId: item.id,
+            productIndex: pIdx,
+            pChNo: item.p_ch_no || '',
+            date: item.date || '',
+            design: p.design || '',
+            lotNo: p.lot_no || '',
+            meter: parseFloat(p.meter) || 0,
+            qty: parseFloat(p.qty) || 0,
+            rate: parseFloat(p.rate) || 0,
+            checked: true,
+            broker: item.broker || '',
+            hsn_code: item.hsn_code || ''
+          });
+        });
+      } else {
+        list.push({
+          id: `${item.id}-0`,
+          itemId: item.id,
+          productIndex: 0,
+          pChNo: item.p_ch_no || '',
+          date: item.date || '',
+          design: item.design || '',
+          lotNo: item.lot_no || '',
+          meter: parseFloat(item.meter) || 0,
+          qty: parseFloat(item.qty) || 0,
+          rate: parseFloat(item.rate) || 0,
+          checked: true,
+          broker: item.broker || '',
+          hsn_code: item.hsn_code || ''
+        });
+      }
+    });
+
+    // If there is only one option, select it by default; if there are multiple options, none are selected.
+    const isSingleOption = list.length === 1;
+    list.forEach(p => {
+      p.checked = isSingleOption;
+    });
+
+    setModalProducts(list);
+    setShowDesignsModal(true);
+  };
+
+  const handleConfirmSelectedDesigns = () => {
+    const selectedProds = modalProducts.filter(p => p.checked);
+    if (selectedProds.length === 0) {
+      triggerAlert('Please select at least one design to add.', 'warning');
+      return;
+    }
+
+    // Check if selected products have different broker names
+    const brokers = selectedProds.map(p => (p.broker || '').trim());
+    const uniqueBrokers = Array.from(new Set(brokers));
+    if (uniqueBrokers.length > 1) {
+      setShowDifferentBrokerModal(true);
+      return;
+    }
+
+    // Check if selected products have different HSN codes
+    const hsnCodes = selectedProds.map(p => (p.hsn_code || '').trim());
+    const uniqueHsnCodes = Array.from(new Set(hsnCodes));
+    if (uniqueHsnCodes.length > 1) {
+      setShowDifferentHsnModal(true);
+      return;
+    }
+
+    setItems(selectedProds.map(prod => ({
+      p_ch_no: prod.pChNo || '',
+      lot_no: prod.lotNo || '',
+      design: prod.design || '',
+      meter: prod.meter > 0 ? prod.meter.toFixed(2) : '',
+      t_qty: prod.qty > 0 ? String(Math.round(prod.qty)) : '',
+      p_qty: '',
+      s_qty: '',
+      qty: prod.qty > 0 ? prod.qty.toFixed(2) : '',
+      rate: prod.rate > 0 ? prod.rate.toFixed(2) : '',
+      _dashboard_item_id: prod.itemId || null,
+      _product_index: prod.productIndex !== undefined ? prod.productIndex : null
+    })));
+
+    // Link first selected pending item ID to header
+    const firstSelected = selectedProds[0];
+    if (firstSelected) {
+      if (firstSelected.itemId) {
+        setSelectedPendingItemId(firstSelected.itemId);
+        setDashboardItemDate(firstSelected.date);
+      }
+      setInvoiceForm(prev => ({
+        ...prev,
+        broker: firstSelected.broker || '',
+        hsn_code: firstSelected.hsn_code || defaultHsnCode || ''
+      }));
+    }
+
+    setShowDesignsModal(false);
+  };
+
+  const handleCancelDesignsModal = () => {
+    handleDeselectPendingItem();
+    setShowDesignsModal(false);
+  };
+
+  // Combine fetched design names with any designs currently entered in table rows
+  const uniqueDesignsList = useMemo(() => {
+    const designsSet = new Set(allDesigns);
+    (items || []).forEach(item => {
+      if (item.design && item.design.trim()) {
+        designsSet.add(item.design.trim());
+      }
+    });
+    return Array.from(designsSet).sort();
+  }, [allDesigns, items]);
+
+  // Extract all product lists from pending dashboard items that match current customer
+  const availableDashboardProducts = useMemo(() => {
+    const selectedCustomer = customers.find(c => String(c.id) === String(invoiceForm.customer));
+    const customerName = selectedCustomer ? selectedCustomer.name : customerForm.name;
+    if (!customerName || !customerName.trim()) return [];
+
+    const customerLower = customerName.trim().toLowerCase();
+    // Filter pending dashboard items by BOTH customer and broker
+    const brokerLower = (invoiceForm.broker || '').trim().toLowerCase();
+    const matchedItems = pendingDashboardItems.filter(item => {
+      const matchCust = (item.customer_name || '').trim().toLowerCase() === customerLower;
+      const matchBroker = (item.broker || '').trim().toLowerCase() === brokerLower;
+      return matchCust && matchBroker;
+    });
+
+    // Extract all products from these matched items
+    const productsList = [];
+    matchedItems.forEach(item => {
+      if (item.products && item.products.length > 0) {
+        item.products.forEach((p, pIdx) => {
+          productsList.push({
+            itemId: item.id,
+            productIndex: pIdx,
+            pChNo: item.p_ch_no || '',
+            date: item.date || '',
+            design: p.design || '',
+            lotNo: p.lot_no || '',
+            meter: parseFloat(p.meter) || 0,
+            qty: parseFloat(p.qty) || 0,
+            rate: parseFloat(p.rate) || 0,
+            hsnCode: p.hsn_code || '',
+            status: p.status || item.status || 'Pending'
+          });
+        });
+      } else {
+        productsList.push({
+          itemId: item.id,
+          productIndex: 0,
+          pChNo: item.p_ch_no || '',
+          date: item.date || '',
+          design: item.design || '',
+          lotNo: item.lot_no || '',
+          meter: parseFloat(item.meter) || 0,
+          qty: parseFloat(item.qty) || 0,
+          rate: parseFloat(item.rate) || 0,
+          hsnCode: item.hsn_code || '',
+          status: item.status || 'Pending'
+        });
+      }
+    });
+
+    return productsList;
+  }, [pendingDashboardItems, invoiceForm.customer, customerForm.name, customers]);
+
+  const handleSelectDashboardProduct = (rowIndex, prod) => {
+    setItems(prev => prev.map((item, idx) => {
+      if (idx === rowIndex) {
+        return {
+          ...item,
+          p_ch_no: prod.pChNo || '',
+          lot_no: prod.lotNo || '',
+          design: prod.design || '',
+          meter: prod.meter > 0 ? prod.meter.toFixed(2) : '',
+          t_qty: prod.qty > 0 ? String(Math.round(prod.qty)) : '',
+          qty: prod.qty > 0 ? prod.qty.toFixed(2) : '',
+          rate: prod.rate > 0 ? prod.rate.toFixed(2) : ''
+        };
+      }
+      return item;
+    }));
+
+    // Auto link the pending dashboard item id if not already selected
+    if (!selectedPendingItemId && prod.itemId) {
+      setSelectedPendingItemId(prod.itemId);
+      setDashboardItemDate(prod.date);
+    }
+  };
+
   // Initial load
   useEffect(() => {
     const initializeData = async () => {
       setLoading(true);
+      // Reset all form/item/linked states to avoid dirty data when changing routes/modes
+      setInvoiceForm({
+        customer: '',
+        bill_number: '',
+        bill_date: new Date().toISOString().substr(0, 10),
+        challan_no: '',
+        hsn_code: '',
+        broker: '',
+        discount_percent: '0.00',
+        blouse_charge: '0.00',
+        extra_charges: '0.00',
+        extra_charges_type: 'add',
+        extra_charges_reason: '',
+        sgst_percent: '2.50',
+        cgst_percent: '2.50',
+        is_challan: false
+      });
+      setCustomerForm({
+        name: '',
+        address: '',
+        gst_number: ''
+      });
+      setSelectedPendingItemId(null);
+      setDashboardItemDate(null);
+      setItems([
+        { p_ch_no: '', lot_no: '', design: '', meter: '', t_qty: '', p_qty: '', s_qty: '', qty: '', rate: '' }
+      ]);
+      setIsEditingCustomer(false);
+
       try {
         // Load customers dropdown options
         const customersList = await customersAPI.list();
         setCustomers(customersList);
 
+        // Fetch pending dashboard items
+        const dashboardList = await fetchPendingDashboardItems();
+
+        let defaultHsnCode = '';
         try {
           const settings = await settingsAPI.get();
           if (settings && settings.plan_expiry_date) {
             setPlanExpiryDate(settings.plan_expiry_date);
           }
+          if (settings && settings.default_hsn_code) {
+            defaultHsnCode = settings.default_hsn_code;
+            setDefaultHsnCode(settings.default_hsn_code);
+          }
         } catch (settingsErr) {
           console.error('Failed to load company settings:', settingsErr);
+        }
+
+        let nextBillNo = '';
+        if (mode === 'Add') {
+          try {
+            const nextBillData = await invoiceAPI.getNextBillNumber();
+            if (nextBillData && nextBillData.next_bill_number) {
+              nextBillNo = nextBillData.next_bill_number;
+            }
+          } catch (nextBillErr) {
+            console.error('Failed to load next bill number:', nextBillErr);
+          }
         }
 
         if (mode === 'Edit' && id) {
@@ -215,6 +562,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
             broker: invoiceData.broker || '',
             discount_percent: parseFloat(invoiceData.discount_percent).toFixed(2),
             blouse_charge: parseFloat(invoiceData.blouse_charge).toFixed(2),
+            extra_charges: parseFloat(invoiceData.extra_charges || 0).toFixed(2),
+            extra_charges_type: invoiceData.extra_charges_type || 'add',
+            extra_charges_reason: invoiceData.extra_charges_reason || '',
             sgst_percent: parseFloat(invoiceData.sgst_percent).toFixed(2),
             cgst_percent: parseFloat(invoiceData.cgst_percent).toFixed(2),
             is_challan: false
@@ -224,6 +574,12 @@ export default function CreateInvoice({ triggerAlert, mode }) {
             address: invoiceData.customer?.address || '',
             gst_number: invoiceData.customer?.gst_number || ''
           });
+          if (invoiceData.dashboard_item_id) {
+            setSelectedPendingItemId(invoiceData.dashboard_item_id);
+          }
+          if (invoiceData.dashboard_item_date) {
+            setDashboardItemDate(invoiceData.dashboard_item_date);
+          }
           if (invoiceData.items && invoiceData.items.length > 0) {
             setItems(invoiceData.items.map(item => ({
               p_ch_no: item.p_ch_no || '',
@@ -242,13 +598,16 @@ export default function CreateInvoice({ triggerAlert, mode }) {
           const invoiceData = await invoiceAPI.get(duplicateId);
           setInvoiceForm({
             customer: invoiceData.customer?.id || '',
-            bill_number: '', // Must be filled manually
+            bill_number: nextBillNo,
             bill_date: new Date().toISOString().substr(0, 10), // Defaults to today's date
             challan_no: invoiceData.challan_no || '',
             hsn_code: invoiceData.hsn_code || '',
             broker: invoiceData.broker || '',
             discount_percent: parseFloat(invoiceData.discount_percent).toFixed(2),
             blouse_charge: parseFloat(invoiceData.blouse_charge).toFixed(2),
+            extra_charges: parseFloat(invoiceData.extra_charges || 0).toFixed(2),
+            extra_charges_type: invoiceData.extra_charges_type || 'add',
+            extra_charges_reason: invoiceData.extra_charges_reason || '',
             sgst_percent: parseFloat(invoiceData.sgst_percent).toFixed(2),
             cgst_percent: parseFloat(invoiceData.cgst_percent).toFixed(2),
             is_challan: false
@@ -271,6 +630,93 @@ export default function CreateInvoice({ triggerAlert, mode }) {
               rate: parseFloat(item.rate) === 0 ? '' : parseFloat(item.rate).toFixed(2)
             })));
           }
+        } else if (mode === 'Add') {
+          // Normal Add Mode
+          let prefill = location.state?.prefillData;
+          if (!prefill && dashboardItemId) {
+            const dbItem = (dashboardList || []).find(item => String(item.id) === String(dashboardItemId));
+            if (dbItem) {
+              prefill = {
+                id: dbItem.id,
+                date: dbItem.date,
+                customerName: dbItem.customer_name,
+                billingAddress: dbItem.billing_address,
+                gstNumber: dbItem.gst_number,
+                hsnCode: dbItem.hsn_code,
+                broker: dbItem.broker,
+                pChNo: dbItem.p_ch_no,
+                lotNo: dbItem.lot_no,
+                design: dbItem.design,
+                qty: dbItem.qty,
+                rate: dbItem.rate,
+                meter: dbItem.meter
+              };
+            }
+          }
+
+          if (prefill) {
+            const matchingCust = customersList.find(c => (c.name || '').trim().toLowerCase() === (prefill.customerName || '').trim().toLowerCase());
+            setInvoiceForm(prev => ({
+              ...prev,
+              bill_number: nextBillNo,
+              customer: matchingCust ? matchingCust.id : '',
+              hsn_code: prefill.hsnCode || defaultHsnCode || '',
+              broker: prefill.broker || ''
+            }));
+            setCustomerForm({
+              name: prefill.customerName || '',
+              address: prefill.billingAddress || '',
+              gst_number: prefill.gstNumber || ''
+            });
+            setIsEditingCustomer(false);
+            setSelectedPendingItemId(prefill.id || null);
+            if (prefill.date) {
+              setDashboardItemDate(prefill.date);
+            }
+
+            // Set items with qty mapped to Total Qty (t_qty)
+            if (prefill.products && prefill.products.length > 0) {
+              setItems(prefill.products.map(p => {
+                const parsedQty = parseFloat(p.qty) || 0;
+                const parsedRate = parseFloat(p.rate) || 0;
+                const parsedMeter = parseFloat(p.meter) || 0;
+                return {
+                  p_ch_no: prefill.pChNo || '',
+                  lot_no: p.lotNo || '',
+                  design: p.design || '',
+                  meter: parsedMeter > 0 ? parsedMeter.toFixed(2) : '',
+                  t_qty: parsedQty > 0 ? String(Math.round(parsedQty)) : '',
+                  p_qty: '',
+                  s_qty: '',
+                  qty: parsedQty > 0 ? parsedQty.toFixed(2) : '',
+                  rate: parsedRate > 0 ? parsedRate.toFixed(2) : ''
+                };
+              }));
+            } else {
+              const parsedQty = parseFloat(prefill.qty) || 0;
+              const parsedRate = parseFloat(prefill.rate) || 0;
+              const parsedMeter = parseFloat(prefill.meter) || 0;
+              setItems([
+                {
+                  p_ch_no: prefill.pChNo || '',
+                  lot_no: prefill.lotNo || '',
+                  design: prefill.design || '',
+                  meter: parsedMeter > 0 ? parsedMeter.toFixed(2) : '',
+                  t_qty: parsedQty > 0 ? String(Math.round(parsedQty)) : '',
+                  p_qty: '',
+                  s_qty: '',
+                  qty: parsedQty > 0 ? parsedQty.toFixed(2) : '',
+                  rate: parsedRate > 0 ? parsedRate.toFixed(2) : ''
+                }
+              ]);
+            }
+          } else {
+            setInvoiceForm(prev => ({
+              ...prev,
+              bill_number: nextBillNo,
+              hsn_code: defaultHsnCode || ''
+            }));
+          }
         }
       } catch (err) {
         console.error('Failed to initialize invoice form:', err);
@@ -285,9 +731,15 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   // Form field updates
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'bill_date' && planExpiryDate && value > planExpiryDate) {
-      setShowExpiryModal(true);
-      return;
+    if (name === 'bill_date') {
+      if (planExpiryDate && value > planExpiryDate) {
+        setShowExpiryModal(true);
+        return;
+      }
+      if (dashboardItemDate && value < dashboardItemDate) {
+        setShowDateErrorModal(true);
+        return;
+      }
     }
     setInvoiceForm(prev => ({
       ...prev,
@@ -322,6 +774,14 @@ export default function CreateInvoice({ triggerAlert, mode }) {
           address: selected.address || '',
           gst_number: selected.gst_number || ''
         });
+        
+        // Reset items to a single empty row
+        setItems([
+          { p_ch_no: '', lot_no: '', design: '', meter: '', t_qty: '', p_qty: '', s_qty: '', qty: '', rate: '' }
+        ]);
+
+        // Open designs modal for this customer
+        openDesignsModalForCustomer(selected.name);
       }
     } else {
       setCustomerForm({
@@ -334,11 +794,79 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
   const handleCustomerFormChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'name') {
+      setSelectedPendingItemId(null);
+    }
     setCustomerForm(prev => ({
       ...prev,
       [name]: value
     }));
   };
+
+  const handleSelectPendingItem = (item) => {
+    const matchingCust = customers.find(c => (c.name || '').trim().toLowerCase() === (item.customer_name || '').trim().toLowerCase());
+    
+    setInvoiceForm(prev => ({
+      ...prev,
+      customer: matchingCust ? matchingCust.id : '',
+      hsn_code: item.hsn_code || defaultHsnCode || '',
+      broker: item.broker || ''
+    }));
+    
+    setCustomerForm({
+      name: item.customer_name || '',
+      address: item.billing_address || '',
+      gst_number: item.gst_number || ''
+    });
+    
+    setIsEditingCustomer(false);
+    setSelectedPendingItemId(item.id);
+    setDashboardItemDate(item.date);
+
+    // Do NOT fetch table details! Keep a single empty row
+    setItems([
+      { p_ch_no: '', lot_no: '', design: '', meter: '', t_qty: '', p_qty: '', s_qty: '', qty: '', rate: '' }
+    ]);
+
+    setDropdownOpen(false);
+
+    // Open the designs selection modal
+    openDesignsModalForCustomer(item.customer_name);
+  };
+
+  const filteredPendingItems = useMemo(() => {
+    const query = (customerForm.name || '').trim().toLowerCase();
+    
+    // Group pending items by customer name to ensure unique customers
+    const customerGroups = {};
+    pendingDashboardItems.forEach(item => {
+      const cName = (item.customer_name || '').trim();
+      if (!cName) return;
+      const cNameKey = cName.toLowerCase();
+      
+      let itemPendingCount = 0;
+      if (item.products && item.products.length > 0) {
+        itemPendingCount = item.products.filter(p => (p.status || 'Pending') !== 'Done').length;
+      } else {
+        itemPendingCount = 1;
+      }
+
+      if (!customerGroups[cNameKey]) {
+        customerGroups[cNameKey] = {
+          ...item,
+          itemsCount: 0
+        };
+      }
+      customerGroups[cNameKey].itemsCount += itemPendingCount;
+    });
+
+    const list = Object.values(customerGroups);
+
+    if (!query) return list;
+    return list.filter(item => 
+      (item.customer_name || '').toLowerCase().includes(query)
+    );
+  }, [pendingDashboardItems, customerForm.name]);
 
   const handleSaveCustomer = async () => {
     if (!customerForm.name) {
@@ -464,6 +992,19 @@ export default function CreateInvoice({ triggerAlert, mode }) {
         ...newItems[index],
         [field]: value
       };
+
+      // Automatically calculate qty = t_qty - p_qty - s_qty
+      const t = parseFloat(newItems[index].t_qty) || 0;
+      const p = parseFloat(newItems[index].p_qty) || 0;
+      const s = parseFloat(newItems[index].s_qty) || 0;
+      const calcQty = t - p - s;
+
+      if (calcQty === 0) {
+        newItems[index].qty = '';
+      } else {
+        newItems[index].qty = calcQty.toFixed(2);
+      }
+
       return newItems;
     });
   };
@@ -515,7 +1056,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   };
 
   // Inline edit field definitions and helper handlers
-  const EDITABLE_FIELDS = ['p_ch_no', 'lot_no', 'design', 'meter', 't_qty', 'p_qty', 's_qty', 'qty', 'rate'];
+  const EDITABLE_FIELDS = ['p_ch_no', 'lot_no', 'design', 'meter', 't_qty', 'p_qty', 's_qty', 'rate'];
 
   const navigateCell = (rowIndex, field, direction) => {
     const fieldIndex = EDITABLE_FIELDS.indexOf(field);
@@ -620,7 +1161,30 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   };
 
   const renderEditableCell = (index, field, type, extraClasses = '') => {
-    const isEditing = editingCell && editingCell.rowIndex === index && editingCell.field === field;
+    const isCellDisabled = (() => {
+      if (field === 'qty') return true;
+
+      const item = items[index];
+      const isRowLinked = !!(item && item._dashboard_item_id);
+
+      if (isRowLinked) {
+        if (['p_qty', 's_qty'].includes(field)) {
+          return false;
+        }
+        return true;
+      }
+
+      // If not linked to dashboard (e.g. manually added row)
+      if (field === 'p_ch_no') return true;
+
+      if (mode === 'Add') {
+        if (isFormFieldsDisabled) return true;
+        return false;
+      }
+      return false;
+    })();
+
+    const isEditing = !isCellDisabled && editingCell && editingCell.rowIndex === index && editingCell.field === field;
     const item = items[index];
     const isText = type === 'text';
 
@@ -648,13 +1212,13 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       <td
         className="p-0"
         style={{
-          cursor: 'pointer',
+          cursor: isCellDisabled ? 'default' : 'pointer',
           height: '38px',
           verticalAlign: 'middle',
           position: 'relative', // relative context for overlay positioning
           ...widthStyle
         }}
-        onClick={() => !saving && setEditingCell({ rowIndex: index, field })}
+        onClick={() => !saving && !isCellDisabled && setEditingCell({ rowIndex: index, field })}
       >
         {/* Normal Flow Content: Always rendered to calculate layout width and height stably */}
         <div
@@ -667,7 +1231,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
             boxSizing: 'border-box',
             padding: '6px 8px',
             margin: 0,
-            backgroundColor: 'transparent',
+            backgroundColor: isCellDisabled ? '#e9ecef' : 'transparent',
             minHeight: 'unset',
             lineHeight: '1.4',
             fontFamily: 'inherit',
@@ -707,20 +1271,101 @@ export default function CreateInvoice({ triggerAlert, mode }) {
               alignItems: 'center'
             }}
           >
-            <InlineEditInput
-              type={type}
-              step={field === 't_qty' ? '1' : (type === 'number' ? '0.01' : undefined)}
-              extraClasses={extraClasses}
-              value={item[field]}
-              onChange={(e) => handleItemChange(index, field, e.target.value)}
-              onFocus={(e) => {
-                handleNumericFocus(index, field);
-                try { e.target.select(); } catch (err) { }
-              }}
-              onBlur={() => handleCellBlur(index, field)}
-              onKeyDown={(e) => handleKeyDown(e, index, field)}
-              disabled={saving}
-            />
+            {field === 'design' ? (
+              <div className="position-relative w-100 h-100 design-dropdown-container">
+                <input
+                  type="text"
+                  className="form-control form-control-sm inline-edit-input"
+                  value={item[field] || ''}
+                  onChange={(e) => handleItemChange(index, field, e.target.value)}
+                  onFocus={(e) => {
+                    try { e.target.select(); } catch (err) { }
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => {
+                      setEditingCell(prev => {
+                        if (prev && prev.rowIndex === index && prev.field === field) {
+                          return null;
+                        }
+                        return prev;
+                      });
+                    }, 250);
+                  }}
+                  autoFocus
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: 0,
+                    border: '2px solid #2563eb',
+                    outline: 'none',
+                    fontSize: '0.85rem',
+                    padding: '2px 8px',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                {(() => {
+                  const filteredProds = availableDashboardProducts.filter(p => 
+                    (p.design || '').toLowerCase().includes((item[field] || '').toLowerCase())
+                  );
+                  if (filteredProds.length === 0) return null;
+                  return (
+                    <ul
+                      className="dropdown-menu show shadow-lg border border-light-subtle py-1"
+                      style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        zIndex: 1050,
+                        display: 'block',
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        width: '320px'
+                      }}
+                    >
+                      {filteredProds.map((prod, pIdx) => (
+                        <li
+                          key={pIdx}
+                          className="d-flex flex-column px-3 py-2 border-bottom border-light-subtle text-black"
+                          style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          onMouseDown={() => {
+                            handleSelectDashboardProduct(index, prod);
+                            setEditingCell(null);
+                          }}
+                        >
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                            <span className="fw-bold text-dark">{prod.design}</span>
+                            <span className={`badge ${prod.status === 'Done' ? 'bg-success' : 'bg-warning text-dark'} small`} style={{ fontSize: '9px', padding: '2px 6px' }}>
+                              {prod.status}
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between text-muted" style={{ fontSize: '10px' }}>
+                            <span>Lot: {prod.lotNo || '-'} {prod.pChNo ? `| Ch: ${prod.pChNo}` : ''}</span>
+                            <span>Qty: {prod.qty} | Rate: ₹{prod.rate}</span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
+              </div>
+            ) : (
+              <InlineEditInput
+                type={type}
+                step={field === 't_qty' ? '1' : (type === 'number' ? '0.01' : undefined)}
+                extraClasses={extraClasses}
+                value={item[field]}
+                onChange={(e) => handleItemChange(index, field, e.target.value)}
+                onFocus={(e) => {
+                  handleNumericFocus(index, field);
+                  try { e.target.select(); } catch (err) { }
+                }}
+                onBlur={() => handleCellBlur(index, field)}
+                onKeyDown={(e) => handleKeyDown(e, index, field)}
+                disabled={saving}
+              />
+            )}
           </div>
         )}
       </td>
@@ -738,6 +1383,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       broker: '',
       discount_percent: '0.00',
       blouse_charge: '0.00',
+      extra_charges: '0.00',
+      extra_charges_type: 'add',
+      extra_charges_reason: '',
       sgst_percent: '2.50',
       cgst_percent: '2.50'
     });
@@ -754,6 +1402,117 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
   const handleClearForm = () => {
     setShowClearConfirmModal(true);
+  };
+
+  // Extra Charges Modal handlers
+  const handleOpenExtraChargesModal = () => {
+    let list = [];
+    const reasonStr = invoiceForm.extra_charges_reason || '';
+    const summaryAmt = parseFloat(invoiceForm.extra_charges) || 0;
+    
+    if (reasonStr.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(reasonStr);
+        if (Array.isArray(parsed)) {
+          list = parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse extra charges JSON:', e);
+      }
+    } else if (summaryAmt > 0) {
+      list = [{
+        amount: invoiceForm.extra_charges,
+        type: invoiceForm.extra_charges_type || 'add',
+        reason: reasonStr
+      }];
+    }
+    
+    setExtraChargesList(list);
+    setExtraChargesInput({
+      amount: '0.00',
+      type: '',
+      reason: ''
+    });
+    setShowExtraChargesModal(true);
+  };
+
+  const handleSelectExtraChargesType = (typeVal) => {
+    setExtraChargesInput(prev => ({ ...prev, type: typeVal }));
+    setTimeout(() => {
+      if (amountInputRef.current) {
+        amountInputRef.current.focus();
+        amountInputRef.current.select();
+      }
+    }, 50);
+  };
+
+  const handleAddChargeToList = () => {
+    const amt = parseFloat(extraChargesInput.amount) || 0;
+    if (amt <= 0) {
+      triggerAlert('Please enter a valid amount greater than 0.', 'warning');
+      return;
+    }
+    if (!extraChargesInput.type) {
+      triggerAlert('Please select a type (Add or Cut).', 'warning');
+      return;
+    }
+    const newCharge = {
+      amount: amt.toFixed(2),
+      type: extraChargesInput.type,
+      reason: extraChargesInput.reason.trim()
+    };
+    setExtraChargesList(prev => [...prev, newCharge]);
+    setExtraChargesInput({
+      amount: '0.00',
+      type: '',
+      reason: ''
+    });
+  };
+
+  const handleRemoveChargeFromList = (index) => {
+    setChargeToDelete(index);
+  };
+
+  const handleConfirmDeleteCharge = () => {
+    if (chargeToDelete !== null) {
+      setExtraChargesList(prev => prev.filter((_, idx) => idx !== chargeToDelete));
+      setChargeToDelete(null);
+    }
+  };
+
+  const handleApplyExtraCharges = () => {
+    let netTotal = 0;
+    extraChargesList.forEach(item => {
+      const val = parseFloat(item.amount) || 0;
+      if (item.type === 'cut') {
+        netTotal -= val;
+      } else {
+        netTotal += val;
+      }
+    });
+
+    const isCut = netTotal < 0;
+    const finalAmount = Math.abs(netTotal).toFixed(2);
+    const finalType = isCut ? 'cut' : 'add';
+    const finalReason = JSON.stringify(extraChargesList);
+
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: finalAmount,
+      extra_charges_type: finalType,
+      extra_charges_reason: finalReason
+    }));
+    setShowExtraChargesModal(false);
+  };
+
+  const handleClearExtraCharges = () => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: '0.00',
+      extra_charges_type: 'add',
+      extra_charges_reason: ''
+    }));
+    setShowExtraChargesModal(false);
   };
 
   // Dynamic calculations via useMemo for live updates
@@ -791,7 +1550,8 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     const discountPercent = parseFloat(invoiceForm.discount_percent) || 0;
     const discount_amount = (gross_amount * discountPercent) / 100;
     const blouseCharge = parseFloat(invoiceForm.blouse_charge) || 0;
-    const subtotal = gross_amount - discount_amount + blouseCharge;
+    const extraCharges = parseFloat(invoiceForm.extra_charges) || 0;
+    const subtotal = gross_amount - discount_amount + blouseCharge + (invoiceForm.extra_charges_type === 'cut' ? -extraCharges : extraCharges);
 
     const sgstPercent = parseFloat(invoiceForm.sgst_percent) || 0;
     const sgst_amount = (subtotal * sgstPercent) / 100;
@@ -823,7 +1583,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
         amount_in_words
       }
     };
-  }, [items, invoiceForm.discount_percent, invoiceForm.blouse_charge, invoiceForm.sgst_percent, invoiceForm.cgst_percent]);
+  }, [items, invoiceForm.discount_percent, invoiceForm.blouse_charge, invoiceForm.extra_charges, invoiceForm.extra_charges_type, invoiceForm.sgst_percent, invoiceForm.cgst_percent]);
 
   const handleClosePreview = () => {
     if (previewBlobUrl) {
@@ -831,7 +1591,20 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       setPreviewBlobUrl(null);
     }
     setPreviewInvoiceId(null);
+    setPreviewBillNumber('');
     navigate('/invoice-history');
+  };
+
+  const handleDownloadPreviewPdf = () => {
+    if (!previewBlobUrl) return;
+    const link = document.createElement('a');
+    link.href = previewBlobUrl;
+    const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
+    const prefix = invoiceForm.is_challan ? 'Challan' : 'Invoice';
+    link.setAttribute('download', `${prefix}_${cleanBillNo}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   // Fetch PDF as blob when previewInvoiceId changes (fixes Electron app:// protocol PDF rendering)
@@ -839,12 +1612,33 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     if (!previewInvoiceId) {
       return;
     }
+
+    const isElectron = window.electron && window.electron.isElectron;
+    if (!isElectron) {
+      // Browser environment: load the PDF URL directly to preserve Content-Disposition filename
+      setPreviewBlobUrl(`/api/invoices/pdf/${previewInvoiceId}/`);
+      setPreviewLoading(false);
+      return;
+    }
+
+    // Electron environment: fetch as blob to bypass CORS/mixed content iframe restrictions
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
       .then(blob => {
         if (!cancelled) {
-          const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+          const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
+          const prefix = invoiceForm.is_challan ? 'Challan' : 'Invoice';
+          const filename = `${prefix}_${cleanBillNo}.pdf`;
+          
+          // Set filename for Electron download dialog
+          if (window.electron && window.electron.setPreviewFilename) {
+            window.electron.setPreviewFilename(filename);
+          }
+
+          // Use File object to set default download filename inside chromium PDF viewer
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          const url = URL.createObjectURL(file);
           setPreviewBlobUrl(url);
         }
       })
@@ -852,13 +1646,14 @@ export default function CreateInvoice({ triggerAlert, mode }) {
         console.error('Failed to load PDF preview:', err);
         if (!cancelled) {
           setPreviewInvoiceId(null);
+          setPreviewBillNumber('');
         }
       })
       .finally(() => {
         if (!cancelled) setPreviewLoading(false);
       });
     return () => { cancelled = true; };
-  }, [previewInvoiceId]);
+  }, [previewInvoiceId, previewBillNumber]);
 
   // Form submission handler
   const handleSubmit = async (e) => {
@@ -866,6 +1661,16 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
     if (planExpiryDate && invoiceForm.bill_date > planExpiryDate) {
       setShowExpiryModal(true);
+      return;
+    }
+
+    if (dashboardItemDate && invoiceForm.bill_date < dashboardItemDate) {
+      setShowDateErrorModal(true);
+      return;
+    }
+
+    if (mode === 'Add' && !selectedPendingItemId) {
+      triggerAlert('Please select a pending dashboard item from the Customer Name suggestions to generate this invoice.', 'danger');
       return;
     }
 
@@ -909,12 +1714,25 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     }
 
     // Combine form and calculations payload
+    // Build billed_products from source tracking on items
+    const billedProducts = [];
+    calculations.items.forEach(item => {
+      if (item._dashboard_item_id != null && item._product_index != null) {
+        billedProducts.push({
+          item_id: item._dashboard_item_id,
+          product_index: item._product_index
+        });
+      }
+    });
+
     const payload = {
       ...invoiceForm,
       customer: invoiceForm.customer || null,
       customer_name: customerForm.name || '',
       customer_address: customerForm.address || '',
       customer_gst_number: customerForm.gst_number || '',
+      dashboard_item_id: selectedPendingItemId,
+      billed_products: billedProducts,
       gross_amount: parseFloat(calculations.summary.gross_amount),
       discount_amount: parseFloat(calculations.summary.discount_amount),
       subtotal: parseFloat(calculations.summary.subtotal),
@@ -936,6 +1754,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
         response = await invoiceAPI.add(payload);
         triggerAlert(`Invoice ${response.bill_number} created successfully.`, 'success');
       }
+      setPreviewBillNumber(response.bill_number || '');
       setPreviewInvoiceId(response.id);
     } catch (err) {
       console.error('Failed to save invoice:', err);
@@ -988,19 +1807,21 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                     onChange={(e) => {
                       handleCustomerFormChange(e);
                       setDropdownOpen(true);
+                      fetchPendingDashboardItems();
                     }}
-                    onFocus={() => setDropdownOpen(true)}
+                    onFocus={() => {
+                      setDropdownOpen(true);
+                      fetchPendingDashboardItems();
+                    }}
                     required={!invoiceForm.customer}
-                    disabled={saving || (!!invoiceForm.customer && !isEditingCustomer)}
+                    disabled={saving || mode === 'Edit' || !!selectedPendingItemId}
                     autoComplete="off"
                   />
-                  {invoiceForm.customer && (
+                  {(invoiceForm.customer || selectedPendingItemId) && mode === 'Add' && (
                     <button
                       type="button"
                       className="btn btn-outline-danger"
-                      onClick={() => {
-                        handleCustomerSelectionChange("");
-                      }}
+                      onClick={handleDeselectPendingItem}
                       title="Deselect Customer"
                       disabled={saving}
                     >
@@ -1022,54 +1843,81 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                       overflowY: 'auto'
                     }}
                   >
-                    {filteredCustomers.length === 0 ? (
-                      <li className="px-3 py-2 text-muted small">No matching customers found</li>
-                    ) : (
-                      filteredCustomers.map(c => (
-                        <li
-                          key={c.id}
-                          className="d-flex align-items-center justify-content-between px-3 py-1 border-bottom border-light-subtle text-black"
-                          style={{ cursor: 'pointer', transition: 'background-color 0.15s ease-in-out' }}
-                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                        >
-                          <span
-                            className="text-truncate flex-grow-1 py-1 fw-medium"
-                            onClick={() => {
-                              handleCustomerSelectionChange(c.id);
-                              setDropdownOpen(false);
-                            }}
+                    {mode === 'Add' ? (
+                      filteredPendingItems.length === 0 ? (
+                        <li className="px-3 py-2 text-muted small">No pending dashboard bills found</li>
+                      ) : (
+                        filteredPendingItems.map(item => (
+                          <li
+                            key={item.id}
+                            className="d-flex flex-column px-3 py-2 border-bottom border-light-subtle text-black"
+                            style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                            onClick={() => handleSelectPendingItem(item)}
                           >
-                            {c.name}
-                          </span>
-                          <div className="d-flex gap-1">
-                            <button
-                              className="btn btn-sm btn-outline-primary border-0 p-1"
-                              type="button"
-                              title="Edit Customer Details"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleStartEditCustomer(c);
+                            <div className="d-flex justify-content-between align-items-center mb-1">
+                              <span className="fw-bold text-dark">{item.customer_name}</span>
+                              <span className="badge bg-warning text-dark small font-monospace" style={{ fontSize: '10px', padding: '3px 8px' }}>
+                                {item.itemsCount} Pending
+                              </span>
+                            </div>
+                            <div className="text-muted small" style={{ fontSize: '11px' }}>
+                              Click to select designs for billing
+                            </div>
+                          </li>
+                        ))
+                      )
+                    ) : (
+                      filteredCustomers.length === 0 ? (
+                        <li className="px-3 py-2 text-muted small">No matching customers found</li>
+                      ) : (
+                        filteredCustomers.map(c => (
+                          <li
+                            key={c.id}
+                            className="d-flex align-items-center justify-content-between px-3 py-1 border-bottom border-light-subtle text-black"
+                            style={{ cursor: 'pointer', transition: 'background-color 0.15s ease-in-out' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            <span
+                              className="text-truncate flex-grow-1 py-1 fw-medium"
+                              onClick={() => {
+                                handleCustomerSelectionChange(c.id);
                                 setDropdownOpen(false);
                               }}
                             >
-                              <i className="bi bi-pencil-square"></i>
-                            </button>
-                            <button
-                              className="btn btn-sm btn-outline-danger border-0 p-1"
-                              type="button"
-                              title="Delete Customer"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCustomerToDelete(c);
-                                setDropdownOpen(false);
-                              }}
-                            >
-                              <i className="bi bi-trash"></i>
-                            </button>
-                          </div>
-                        </li>
-                      ))
+                              {c.name}
+                            </span>
+                            <div className="d-flex gap-1">
+                              <button
+                                className="btn btn-sm btn-outline-primary border-0 p-1"
+                                type="button"
+                                title="Edit Customer Details"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStartEditCustomer(c);
+                                  setDropdownOpen(false);
+                                }}
+                              >
+                                <i className="bi bi-pencil-square"></i>
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline-danger border-0 p-1"
+                                type="button"
+                                title="Delete Customer"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCustomerToDelete(c);
+                                  setDropdownOpen(false);
+                                }}
+                              >
+                                <i className="bi bi-trash"></i>
+                              </button>
+                            </div>
+                          </li>
+                        ))
+                      )
                     )}
                   </ul>
                 )}
@@ -1086,9 +1934,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                     placeholder="Enter GSTIN"
                     value={customerForm.gst_number}
                     onChange={handleCustomerFormChange}
-                    disabled={saving || (!!invoiceForm.customer && !isEditingCustomer)}
+                    disabled={saving || mode === 'Add' || (!!invoiceForm.customer && !isEditingCustomer) || isLinkedToDashboard}
                   />
-                  {invoiceForm.customer ? (
+                  {mode !== 'Add' && invoiceForm.customer && !isLinkedToDashboard && (
                     isEditingCustomer ? (
                       <>
                         <button
@@ -1124,23 +1972,6 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                         <i className="bi bi-pencil-square me-1"></i> Edit
                       </button>
                     )
-                  ) : (
-                    <button
-                      type="button"
-                      className="btn btn-outline-primary btn-sm text-truncate"
-                      onClick={handleSaveCustomer}
-                      disabled={saving || savingCustomer}
-                      title="Save Customer"
-                      style={{ maxWidth: '120px' }}
-                    >
-                      {savingCustomer ? (
-                        <>...</>
-                      ) : (
-                        <>
-                          <i className="bi bi-person-plus-fill me-1"></i> Save
-                        </>
-                      )}
-                    </button>
                   )}
                 </div>
               </div>
@@ -1154,7 +1985,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   className="form-control"
                   value={invoiceForm.bill_number}
                   onChange={handleFormChange}
-                  disabled={saving}
+                  disabled={saving || mode === 'Add'}
                 />
               </div>
 
@@ -1183,7 +2014,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   placeholder="Enter Billing Address"
                   value={customerForm.address}
                   onChange={handleCustomerFormChange}
-                  disabled={saving || (!!invoiceForm.customer && !isEditingCustomer)}
+                  disabled={saving || mode === 'Add' || (!!invoiceForm.customer && !isEditingCustomer) || isLinkedToDashboard}
                   style={{ resize: 'none', overflowY: 'hidden', minHeight: '38px' }}
                 ></textarea>
               </div>
@@ -1210,7 +2041,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   className="form-control"
                   value={invoiceForm.hsn_code}
                   onChange={handleFormChange}
-                  disabled={saving}
+                  disabled={saving || mode === 'Add' || isLinkedToDashboard}
                 />
               </div>
 
@@ -1223,7 +2054,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   className="form-control"
                   value={invoiceForm.broker}
                   onChange={handleFormChange}
-                  disabled={saving}
+                  disabled={saving || mode === 'Add' || isLinkedToDashboard}
                 />
               </div>
             </div>
@@ -1233,18 +2064,18 @@ export default function CreateInvoice({ triggerAlert, mode }) {
             <table className="table table-bordered table-sm align-middle invoice-table mb-0">
               <thead className="table-dark text-center small text-uppercase">
                 <tr>
-                  <th className="col-nowrap" style={{ width: '40px' }}>No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '90px' }}>P.Ch.No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '90px' }}>Lot No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '150px' }}>Design</th>
-                  <th className="col-nowrap" style={{ minWidth: '80px' }}>Meter</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>T.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>P.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>S.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '80px' }}>Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '90px' }}>Rate</th>
-                  <th className="col-nowrap" style={{ minWidth: '120px' }}>Amount</th>
-                  <th className="col-nowrap" style={{ width: '50px' }}>Action</th>
+                  <th className="col-nowrap text-center align-middle" style={{ width: '40px' }}>No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>P.Ch.No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>Lot No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '150px' }}>Design</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Meter</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Total<br/>Qty</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Plain<br/>Qty</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Short<br/>Qty</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Qty</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '90px' }}>Rate</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '120px' }}>Amount</th>
+                  <th className="col-nowrap text-center align-middle" style={{ width: '50px' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1253,9 +2084,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   return (
                     <tr key={index}>
                       <td className="text-center align-middle row-number col-nowrap">{index + 1}</td>
-                      {renderEditableCell(index, 'p_ch_no', 'text', 'item-pch col-wrap-text')}
-                      {renderEditableCell(index, 'lot_no', 'text', 'item-lot col-wrap-text')}
-                      {renderEditableCell(index, 'design', 'text', 'item-design col-wrap-text')}
+                      {renderEditableCell(index, 'p_ch_no', 'text', 'text-center item-pch col-wrap-text')}
+                      {renderEditableCell(index, 'lot_no', 'text', 'text-center item-lot col-wrap-text')}
+                      {renderEditableCell(index, 'design', 'text', 'text-center item-design col-wrap-text')}
                       {renderEditableCell(index, 'meter', 'number', 'text-center item-meter col-nowrap')}
                       {renderEditableCell(index, 't_qty', 'number', 'text-center item-tqty col-nowrap')}
                       {renderEditableCell(index, 'p_qty', 'number', 'text-center item-pqty col-nowrap')}
@@ -1268,11 +2099,11 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                       <td className="text-center align-middle p-0 col-nowrap">
                         <button
                           type="button"
-                          onClick={() => setRowToDelete(index)}
                           className="btn btn-outline-danger btn-sm border-0 remove-row-btn"
-                          disabled={saving || items.length === 1}
+                          onClick={() => setRowToDelete(index)}
+                          disabled={saving || items.length === 1 || isFormFieldsDisabled || !!item._dashboard_item_id}
                         >
-                          <i className="bi bi-trash3-fill"></i>
+                          <i className="bi bi-trash"></i>
                           <span className="btn-text">Delete</span>
                         </button>
                       </td>
@@ -1280,19 +2111,21 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   );
                 })}
                 {/* Row Type Add Button inside Table */}
-                <tr>
-                  <td colSpan="12" className="text-center p-2 bg-light-subtle">
-                    <button
-                      type="button"
-                      onClick={addRow}
-                      className="btn btn-outline-primary btn-sm rounded-pill mx-auto"
-                      disabled={saving}
-                      style={{ borderStyle: 'dashed', width: '85%' }}
-                    >
-                      <i className="bi bi-plus-lg me-1"></i> Add Row
-                    </button>
-                  </td>
-                </tr>
+                {!isFormFieldsDisabled && (
+                  <tr>
+                    <td colSpan="12" className="text-center p-2 bg-light-subtle">
+                      <button
+                        type="button"
+                        onClick={addRow}
+                        className="btn btn-outline-primary btn-sm rounded-pill mx-auto"
+                        disabled={saving}
+                        style={{ borderStyle: 'dashed', width: '85%' }}
+                      >
+                        <i className="bi bi-plus-lg me-1"></i> Add Row
+                      </button>
+                    </td>
+                  </tr>
+                )}
               </tbody>
               <tfoot className="table-light fw-bold text-end">
                 <tr>
@@ -1364,7 +2197,40 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                 </div>
                 <div className="row g-2">
                   <div className="col-12">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Sub Total (<Rupee />)</label>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Sub Total (<Rupee />)</label>
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 text-decoration-none fw-bold text-primary"
+                        style={{ fontSize: '0.75rem', outline: 'none', boxShadow: 'none' }}
+                        onClick={handleOpenExtraChargesModal}
+                        disabled={saving}
+                      >
+                        {invoiceForm.extra_charges && parseFloat(invoiceForm.extra_charges) > 0 ? (
+                          (() => {
+                            let label = `Extra: ${invoiceForm.extra_charges_type === 'cut' ? '-' : '+'}${formatAmount(invoiceForm.extra_charges)}`;
+                            const reasonStr = invoiceForm.extra_charges_reason || '';
+                            if (reasonStr.trim().startsWith('[')) {
+                              try {
+                                const parsed = JSON.parse(reasonStr);
+                                if (Array.isArray(parsed) && parsed.length > 0) {
+                                  if (parsed.length === 1) {
+                                    label += parsed[0].reason ? ` (${parsed[0].reason})` : '';
+                                  } else {
+                                    label += ` (${parsed.length} items)`;
+                                  }
+                                }
+                              } catch (e) {}
+                            } else if (reasonStr) {
+                              label += ` (${reasonStr})`;
+                            }
+                            return <span>{label} (Edit)</span>;
+                          })()
+                        ) : (
+                          "+ Extra Charges"
+                        )}
+                      </button>
+                    </div>
                     <input
                       type="text"
                       className="form-control form-control-sm bg-light text-muted text-end"
@@ -1507,6 +2373,172 @@ export default function CreateInvoice({ triggerAlert, mode }) {
           </div>
         </form>
       </div>
+
+      {/* Modal overlay popup for Extra Charges / Cuts */}
+      {showExtraChargesModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px' }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title fw-bold text-primary d-flex align-items-center">
+                  <i className="bi bi-plus-slash-minus me-2"></i> Extra Charges / Cuts
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close" 
+                  onClick={() => setShowExtraChargesModal(false)} 
+                  aria-label="Close"
+                ></button>
+              </div>
+              <div className="modal-body py-3">
+                {/* 1. List of Added Charges */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold small mb-2 text-secondary">Added Charges / Cuts ({extraChargesList.length})</label>
+                  {extraChargesList.length === 0 ? (
+                    <div className="text-muted text-center py-2 bg-light rounded" style={{ fontSize: '0.85rem', border: '1px dashed #cbd5e1' }}>
+                      No extra charges or cuts added yet.
+                    </div>
+                  ) : (
+                    <div className="border rounded charges-scroll-container" style={{ height: '110px', overflowY: 'auto' }}>
+                      <table className="table table-sm table-borderless mb-0" style={{ fontSize: '0.9rem' }}>
+                        <thead className="table-light border-bottom" style={{ fontSize: '0.8rem', position: 'sticky', top: 0, zIndex: 1 }}>
+                          <tr>
+                            <th className="px-2 py-1">Type</th>
+                            <th className="px-2 py-1 text-end">Amount</th>
+                            <th className="px-2 py-1">Reason</th>
+                            <th className="px-2 py-1 text-center" style={{ width: '40px' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {extraChargesList.map((item, idx) => (
+                            <tr key={idx} className="border-bottom align-middle">
+                              <td className="px-2 py-1">
+                                <span className={`badge ${item.type === 'add' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} rounded-pill`} style={{ fontSize: '0.75rem' }}>
+                                  {item.type === 'add' ? 'Add' : 'Cut'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1 text-end fw-bold">₹ {formatAmount(item.amount)}</td>
+                              <td className="px-2 py-1 text-truncate" style={{ maxWidth: '120px' }} title={item.reason}>
+                                {item.reason || '-'}
+                              </td>
+                              <td className="px-2 py-1 text-center">
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm text-danger p-0 border-0"
+                                  onClick={() => handleRemoveChargeFromList(idx)}
+                                >
+                                  <i className="bi bi-trash-fill"></i>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <hr className="my-3" />
+
+                {/* 2. Form to Add New Charge */}
+                <div className="mt-2">
+                  <div className="fw-bold small mb-2 text-primary" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
+                  
+                  <div className="mb-2.5">
+                    <label className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Type</label>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'add' ? 'btn-primary' : 'btn-outline-primary'}`}
+                        onClick={() => handleSelectExtraChargesType('add')}
+                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                      >
+                        <i className="bi bi-plus-circle me-1"></i> Add
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'cut' ? 'btn-danger' : 'btn-outline-danger'}`}
+                        onClick={() => handleSelectExtraChargesType('cut')}
+                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                      >
+                        <i className="bi bi-dash-circle me-1"></i> Cut
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-2.5">
+                    <label htmlFor="extra-charges-amount" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Amount (₹)</label>
+                    <input
+                      ref={amountInputRef}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      id="extra-charges-amount"
+                      className="form-control form-control-sm"
+                      style={{ fontSize: '0.85rem' }}
+                      placeholder="0.00"
+                      value={extraChargesInput.amount}
+                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, amount: e.target.value }))}
+                      disabled={!extraChargesInput.type}
+                      autoFocus={!!extraChargesInput.type}
+                      onFocus={(e) => e.target.select()}
+                    />
+                  </div>
+
+                  <div className="mb-2">
+                    <label htmlFor="extra-charges-reason" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Reason</label>
+                    <input
+                      type="text"
+                      id="extra-charges-reason"
+                      className="form-control form-control-sm"
+                      style={{ fontSize: '0.85rem' }}
+                      placeholder="e.g. Transport, Special Discount"
+                      value={extraChargesInput.reason}
+                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, reason: e.target.value }))}
+                      disabled={!extraChargesInput.type}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm w-100 mt-2 d-flex align-items-center justify-content-center gap-1 fw-bold"
+                    style={{ height: '32px', fontSize: '0.8rem' }}
+                    onClick={handleAddChargeToList}
+                    disabled={!extraChargesInput.type}
+                  >
+                    <i className="bi bi-plus-lg"></i> Add to List
+                  </button>
+                </div>
+              </div>
+              <div className="modal-footer border-0 pt-0 d-flex justify-content-between">
+                <button
+                  type="button"
+                  onClick={handleClearExtraCharges}
+                  className="btn btn-outline-secondary btn-sm px-3"
+                >
+                  Clear All
+                </button>
+                <div className="d-flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraChargesModal(false)}
+                    className="btn btn-light border btn-sm px-3"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyExtraCharges}
+                    className="btn btn-primary btn-sm px-3"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal overlay popup for Duplicate Bill Number */}
       {showDuplicateModal && (
@@ -1685,6 +2717,183 @@ export default function CreateInvoice({ triggerAlert, mode }) {
         </div>
       )}
 
+      {/* Modal overlay popup for Date Error */}
+      {showDateErrorModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg text-start">
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Invalid Bill Date
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowDateErrorModal(false)} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-0 text-black">
+                  Bill Date cannot be earlier than Dashboard Billing Date (<strong>{formatDateDDMMYYYY(dashboardItemDate)}</strong>).
+                </p>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDateErrorModal(false)}
+                  className="btn btn-danger btn-sm px-4"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal overlay popup for Different Broker Alert */}
+      {showDifferentBrokerModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg text-start">
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Different Broker Detected
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowDifferentBrokerModal(false)} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-0 text-black">
+                  You cannot select items with different broker names. Please select items belonging to the same broker.
+                </p>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDifferentBrokerModal(false)}
+                  className="btn btn-danger btn-sm px-4"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal overlay popup for Different HSN Alert */}
+      {showDifferentHsnModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg text-start">
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Different HSN Codes Detected
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setShowDifferentHsnModal(false)} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-0 text-black">
+                  You cannot select items with different HSN codes. Please select items belonging to the same HSN code.
+                </p>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setShowDifferentHsnModal(false)}
+                  className="btn btn-danger btn-sm px-4"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal overlay popup for Selecting Pending Designs */}
+      {showDesignsModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-xl modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg text-start">
+              <div className="modal-header bg-primary text-white py-3">
+                <h5 className="modal-title fw-bold d-flex align-items-center">
+                  <i className="bi bi-grid-3x3-gap-fill me-2"></i> Select Pending Designs for Bill
+                </h5>
+                <button type="button" className="btn-close btn-close-white" onClick={handleCancelDesignsModal} aria-label="Close"></button>
+              </div>
+              <div className="modal-body p-4" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <p className="text-muted small mb-3">
+                  Check the designs/items from the dashboard you want to include in this invoice.
+                </p>
+                <div className="table-responsive">
+                  <table className="table table-hover align-middle mb-0 text-center">
+                    <thead className="table-light text-uppercase font-monospace" style={{ fontSize: '12px' }}>
+                      <tr>
+                        <th width="40" className="text-center">
+                          <input
+                            type="checkbox"
+                            className="form-check-input"
+                            checked={modalProducts.length > 0 && modalProducts.every(p => p.checked)}
+                            onChange={(e) => {
+                              const val = e.target.checked;
+                              setModalProducts(prev => prev.map(p => ({ ...p, checked: val })));
+                            }}
+                          />
+                        </th>
+                        <th className="text-center">Date</th>
+                        <th className="text-center">P.Ch.No</th>
+                        <th className="text-center">Design</th>
+                        <th className="text-center">Lot No</th>
+                        <th className="text-center">Broker</th>
+                        <th className="text-center">Qty</th>
+                        <th className="text-center">Rate</th>
+                        <th className="text-center">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {modalProducts.map((prod, idx) => (
+                        <tr
+                          key={prod.id}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: !p.checked } : p));
+                          }}
+                        >
+                          <td className="text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="form-check-input"
+                              checked={prod.checked}
+                              onChange={(e) => {
+                                const val = e.target.checked;
+                                setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: val } : p));
+                              }}
+                            />
+                          </td>
+                          <td className="small text-center">{formatDateDDMMYYYY(prod.date)}</td>
+                          <td className="small font-monospace text-center">{prod.pChNo || '-'}</td>
+                          <td className="fw-bold text-center">{prod.design}</td>
+                          <td className="small font-monospace text-center">{prod.lotNo || '-'}</td>
+                          <td className="small text-center">{prod.broker || '-'}</td>
+                          <td className="text-center small">{prod.qty}</td>
+                          <td className="text-center small">₹{prod.rate.toFixed(2)}</td>
+                          <td className="text-center fw-semibold">₹{(prod.qty * prod.rate).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="modal-footer bg-light py-3 d-flex justify-content-between">
+                <button type="button" className="btn btn-light border btn-sm px-3" onClick={handleCancelDesignsModal}>
+                  Cancel
+                </button>
+                <button type="button" className="btn btn-primary btn-sm px-4 fw-semibold" onClick={handleConfirmSelectedDesigns}>
+                  Add to Bill ({modalProducts.filter(p => p.checked).length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal overlay popup for Live PDF Invoice Preview */}
       {previewInvoiceId && (
         <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
@@ -1719,13 +2928,59 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                   ></iframe>
                 )}
               </div>
-              <div className="modal-footer border-0 py-2">
+              <div className="modal-footer border-0 py-2 d-flex justify-content-end gap-2 w-100">
                 <button
                   type="button"
                   onClick={handleClosePreview}
                   className="btn btn-secondary btn-sm px-4"
+                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   Close & Go to History
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPreviewPdf}
+                  className="btn btn-primary btn-sm px-4"
+                  disabled={!previewBlobUrl}
+                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <i className="bi bi-download me-1"></i> Download PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal overlay popup for Confirm Delete Charge */}
+      {chargeToDelete !== null && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Delete Extra Charge
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setChargeToDelete(null)} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-0">
+                  Are you sure you want to delete this extra charge/cut of <strong>₹ {formatAmount(extraChargesList[chargeToDelete]?.amount)}</strong> ({extraChargesList[chargeToDelete]?.reason || 'no reason'})?
+                </p>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setChargeToDelete(null)}
+                  className="btn btn-light border btn-sm px-3"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteCharge}
+                  className="btn btn-danger btn-sm px-3"
+                >
+                  Delete
                 </button>
               </div>
             </div>

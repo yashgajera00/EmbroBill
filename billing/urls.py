@@ -6,6 +6,7 @@ urlpatterns = [
     path('login/', views.login_view, name='api_login'),
     path('logout/', views.logout_view, name='api_logout'),
     path('change-password/', views.change_password, name='api_change_password'),
+    path('verify-password/', views.verify_password, name='api_verify_password'),
     path('settings/', views.company_settings, name='api_company_settings'),
     path('license/', views.activate_license, name='api_activate_license'),
     
@@ -19,6 +20,7 @@ urlpatterns = [
     
     # Invoice API routes
     path('invoices/', views.invoice_list, name='api_invoice_list'),
+    path('invoices/next-bill-number/', views.next_bill_number_view, name='api_next_bill_number'),
     path('invoices/add/', views.invoice_add, name='api_invoice_add'),
     path('invoices/edit/<int:pk>/', views.invoice_edit, name='api_invoice_edit'),
     path('invoices/update-payment/<int:pk>/', views.invoice_update_payment, name='api_invoice_update_payment'),
@@ -26,4 +28,10 @@ urlpatterns = [
     path('invoices/pdf/bulk/', views.invoice_pdf_bulk, name='api_invoice_pdf_bulk'),
     path('invoices/pdf/<int:pk>/', views.invoice_pdf, name='api_invoice_pdf'),
     path('invoices/delete/<int:pk>/', views.invoice_delete, name='api_invoice_delete'),
+
+    # Dashboard Items API routes (separate from invoices)
+    path('dashboard-items/', views.dashboard_items_list, name='api_dashboard_items_list'),
+    path('dashboard-items/add/', views.dashboard_item_add, name='api_dashboard_item_add'),
+    path('dashboard-items/edit/<int:pk>/', views.dashboard_item_edit, name='api_dashboard_item_edit'),
+    path('dashboard-items/delete/<int:pk>/', views.dashboard_item_delete, name='api_dashboard_item_delete'),
 ]

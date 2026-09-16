@@ -4,6 +4,14 @@ echo   EmbroBill - Desktop App Dual Architecture Build Process
 echo =========================================================
 echo.
 
+echo [Pre-build] Resetting local development data...
+call python reset_dev_data.py
+if %errorlevel% neq 0 (
+    echo Error: Data reset failed.
+    pause
+    exit /b 1
+)
+
 echo [0/5] Cleaning previous distribution files...
 call npm run clean -- --all
 if %errorlevel% neq 0 (

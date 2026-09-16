@@ -5,6 +5,22 @@ const api = axios.create({
   withCredentials: true, // Crucial for Django session cookie authentication
 });
 
+// Add request interceptor to prevent caching of GET requests in browser / Electron
+api.interceptors.request.use(
+  (config) => {
+    if (config.method && config.method.toLowerCase() === 'get') {
+      config.params = {
+        ...config.params,
+        _t: Date.now()
+      };
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 // Configure Axios to automatically read the CSRF token from the Django cookie
 api.defaults.xsrfCookieName = 'csrftoken';
 api.defaults.xsrfHeaderName = 'X-CSRFToken';

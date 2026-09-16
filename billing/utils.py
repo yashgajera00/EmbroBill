@@ -269,6 +269,38 @@ def _get_invoice_flowables(invoice, company, styles, title_style, company_name_s
     if not is_challan:
         calc_rows.append([Paragraph("DISCOUNT", cell_style_left), Paragraph(f"{invoice.discount_percent:.2f}%", cell_style_right), Paragraph(format_indian_currency(invoice.discount_amount), cell_style_right)])
         calc_rows.append([Paragraph("BLOUSE CHARGE", cell_style_left), Paragraph("", cell_style_right), Paragraph(format_indian_currency(invoice.blouse_charge), cell_style_right)])
+        
+        # Display Extra Charges / Cuts if present
+        from decimal import Decimal
+        extra_reason = getattr(invoice, 'extra_charges_reason', '') or ''
+        has_shown_charge = False
+        try:
+            import json
+            charges_list = json.loads(extra_reason)
+            if isinstance(charges_list, list):
+                for charge in charges_list:
+                    c_amt = Decimal(str(charge.get('amount', 0)))
+                    c_type = charge.get('type', 'add')
+                    c_reason = charge.get('reason', '') or ''
+                    if c_amt != 0:
+                        label = "EXTRA CHARGE" if c_type == 'add' else "CUT/DEDUCT"
+                        if c_reason:
+                            label += f" ({c_reason})"
+                        display_amt = c_amt if c_type == 'add' else -c_amt
+                        calc_rows.append([Paragraph(label, cell_style_left), Paragraph("", cell_style_right), Paragraph(format_indian_currency(display_amt), cell_style_right)])
+                        has_shown_charge = True
+            else:
+                raise ValueError()
+        except Exception:
+            extra_charges = getattr(invoice, 'extra_charges', Decimal('0.00')) or Decimal('0.00')
+            if extra_charges != 0:
+                extra_type = getattr(invoice, 'extra_charges_type', 'add')
+                label = "EXTRA CHARGE" if extra_type == 'add' else "CUT/DEDUCT"
+                if extra_reason:
+                    label += f" ({extra_reason})"
+                display_amount = extra_charges if extra_type == 'add' else -extra_charges
+                calc_rows.append([Paragraph(label, cell_style_left), Paragraph("", cell_style_right), Paragraph(format_indian_currency(display_amount), cell_style_right)])
+
         calc_rows.append([Paragraph("SUB TOTAL", cell_style_left_bold), Paragraph("", cell_style_right), Paragraph(format_indian_currency(invoice.subtotal), cell_style_right_bold)])
         calc_rows.append([Paragraph("SGST", cell_style_left), Paragraph(f"{invoice.sgst_percent:.2f}%", cell_style_right), Paragraph(format_indian_currency(invoice.sgst_amount), cell_style_right)])
         calc_rows.append([Paragraph("CGST", cell_style_left), Paragraph(f"{invoice.cgst_percent:.2f}%", cell_style_right), Paragraph(format_indian_currency(invoice.cgst_amount), cell_style_right)])
@@ -277,14 +309,31 @@ def _get_invoice_flowables(invoice, company, styles, title_style, company_name_s
         [Paragraph("AMOUNT", amount_style_left), Paragraph("", cell_style_right), Paragraph(format_indian_currency(invoice.amount), amount_style_right)],
     ])
     calc_table = Table(calc_rows, colWidths=[90, 50, 83])
-    calc_table.setStyle(TableStyle([
+    table_style_list = [
         ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('TOPPADDING', (0,0), (-1,-1), 2),
         ('BOTTOMPADDING', (0,0), (-1,-1), 2),
         ('LEFTPADDING', (0,0), (-1,-1), 4),
         ('RIGHTPADDING', (0,0), (-1,-1), 4),
-    ]))
+    ]
+    
+    for idx, row in enumerate(calc_rows):
+        middle_cell = row[1]
+        is_empty = False
+        if isinstance(middle_cell, Paragraph):
+            if not middle_cell.text or middle_cell.text.strip() == "":
+                is_empty = True
+        elif isinstance(middle_cell, str):
+            if not middle_cell.strip() == "":
+                is_empty = True
+        else:
+            is_empty = True
+            
+        if is_empty:
+            table_style_list.append(('SPAN', (0, idx), (1, idx)))
+            
+    calc_table.setStyle(TableStyle(table_style_list))
     bottom_master_table = Table([[left_cell_paragraphs, calc_table]], colWidths=[300, 223])
     bottom_master_table.setStyle(TableStyle([
         ('VALIGN', (0,0), (-1,-1), 'TOP'),
@@ -685,10 +734,45 @@ def _get_challan_half(invoice, company, copy_label):
     terms_html = "<b>Terms:</b><br/>" + "<br/>".join(terms_list)
     left_cell = [Paragraph(bank_html, cl), Spacer(1, 3), Paragraph(terms_html, cl)]
 
-    calc_rows = [
+    calc_rows = []
+    calc_rows.append([Paragraph("GROSS AMT", cl), Paragraph("", cr), Paragraph(format_indian_currency(invoice.gross_amount), cr)])
+    calc_rows.append([Paragraph("DISCOUNT", cl), Paragraph(f"{float(invoice.discount_percent or 0):.2f}%", cr), Paragraph(format_indian_currency(invoice.discount_amount), cr)])
+    calc_rows.append([Paragraph("BLOUSE CHG", cl), Paragraph("", cr), Paragraph(format_indian_currency(invoice.blouse_charge), cr)])
+    
+    # Display Extra Charges / Cuts if present
+    from decimal import Decimal
+    extra_reason = getattr(invoice, 'extra_charges_reason', '') or ''
+    try:
+        import json
+        charges_list = json.loads(extra_reason)
+        if isinstance(charges_list, list):
+            for charge in charges_list:
+                c_amt = Decimal(str(charge.get('amount', 0)))
+                c_type = charge.get('type', 'add')
+                c_reason = charge.get('reason', '') or ''
+                if c_amt != 0:
+                    label = "EXTRA CHG" if c_type == 'add' else "CUT/DED"
+                    if c_reason:
+                        label += f" ({c_reason})"
+                    display_amt = c_amt if c_type == 'add' else -c_amt
+                    calc_rows.append([Paragraph(label, cl), Paragraph("", cr), Paragraph(format_indian_currency(display_amt), cr)])
+        else:
+            raise ValueError()
+    except Exception:
+        extra_charges = getattr(invoice, 'extra_charges', Decimal('0.00')) or Decimal('0.00')
+        if extra_charges != 0:
+            extra_type = getattr(invoice, 'extra_charges_type', 'add')
+            label = "EXTRA CHG" if extra_type == 'add' else "CUT/DED"
+            if extra_reason:
+                label += f" ({extra_reason})"
+            display_amount = extra_charges if extra_type == 'add' else -extra_charges
+            calc_rows.append([Paragraph(label, cl), Paragraph("", cr), Paragraph(format_indian_currency(display_amount), cr)])
+
+    calc_rows.append([Paragraph("SUB TOTAL", clb), Paragraph("", cr), Paragraph(format_indian_currency(invoice.subtotal), crb)])
+    calc_rows.extend([
         [Paragraph("R.OFF", cl), Paragraph("", cr), Paragraph(format_indian_currency(invoice.round_off), cr)],
         [Paragraph("AMOUNT", amt_l), Paragraph("", cr), Paragraph(format_indian_currency(invoice.amount), amt_r)],
-    ]
+    ])
     calc_table = Table(calc_rows, colWidths=[60, 38, 60])
     calc_table.setStyle(TableStyle([
         ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.black),

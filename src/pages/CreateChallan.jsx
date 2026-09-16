@@ -136,11 +136,22 @@ export default function CreateChallan({ triggerAlert, mode }) {
   const [rowToDelete, setRowToDelete] = useState(null);
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
+  const [previewBillNumber, setPreviewBillNumber] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [planExpiryDate, setPlanExpiryDate] = useState(null);
+  const [defaultHsnCode, setDefaultHsnCode] = useState('');
   const [showExpiryModal, setShowExpiryModal] = useState(false);
   const [editingCell, setEditingCell] = useState(null); // { rowIndex: number, field: string }
+  const [showExtraChargesModal, setShowExtraChargesModal] = useState(false);
+  const amountInputRef = useRef(null);
+  const [extraChargesList, setExtraChargesList] = useState([]);
+  const [chargeToDelete, setChargeToDelete] = useState(null);
+  const [extraChargesInput, setExtraChargesInput] = useState({
+    amount: '0.00',
+    type: '',
+    reason: ''
+  });
 
   // Form fields state
   const [invoiceForm, setInvoiceForm] = useState({
@@ -152,6 +163,9 @@ export default function CreateChallan({ triggerAlert, mode }) {
     broker: '',
     discount_percent: '0.00',
     blouse_charge: '0.00',
+    extra_charges: '0.00',
+    extra_charges_type: 'add',
+    extra_charges_reason: '',
     sgst_percent: '0.00',
     cgst_percent: '0.00',
     is_challan: true
@@ -194,10 +208,15 @@ export default function CreateChallan({ triggerAlert, mode }) {
         const customersList = await customersAPI.list();
         setCustomers(customersList);
 
+        let defaultHsn = '';
         try {
           const settings = await settingsAPI.get();
           if (settings && settings.plan_expiry_date) {
             setPlanExpiryDate(settings.plan_expiry_date);
+          }
+          if (settings && settings.default_hsn_code) {
+            defaultHsn = settings.default_hsn_code;
+            setDefaultHsnCode(settings.default_hsn_code);
           }
         } catch (settingsErr) {
           console.error('Failed to load company settings:', settingsErr);
@@ -245,7 +264,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
             bill_number: '', // Must be filled manually
             bill_date: new Date().toISOString().substr(0, 10), // Defaults to today's date
             challan_no: invoiceData.challan_no || '',
-            hsn_code: invoiceData.hsn_code || '',
+            hsn_code: invoiceData.hsn_code || defaultHsn || '',
             broker: invoiceData.broker || '',
             discount_percent: parseFloat(invoiceData.discount_percent).toFixed(2),
             blouse_charge: parseFloat(invoiceData.blouse_charge).toFixed(2),
@@ -271,6 +290,12 @@ export default function CreateChallan({ triggerAlert, mode }) {
               rate: parseFloat(item.rate) === 0 ? '' : parseFloat(item.rate).toFixed(2)
             })));
           }
+        } else if (mode === 'Add') {
+          // Normal Add Mode
+          setInvoiceForm(prev => ({
+            ...prev,
+            hsn_code: defaultHsn || ''
+          }));
         }
       } catch (err) {
         console.error('Failed to initialize invoice form:', err);
@@ -464,8 +489,132 @@ export default function CreateChallan({ triggerAlert, mode }) {
         ...newItems[index],
         [field]: value
       };
+
+      // Automatically calculate qty = t_qty - p_qty - s_qty
+      const t = parseFloat(newItems[index].t_qty) || 0;
+      const p = parseFloat(newItems[index].p_qty) || 0;
+      const s = parseFloat(newItems[index].s_qty) || 0;
+      const calcQty = t - p - s;
+
+      if (calcQty === 0) {
+        newItems[index].qty = '';
+      } else {
+        newItems[index].qty = calcQty.toFixed(2);
+      }
+
       return newItems;
     });
+  };
+
+  // Extra Charges Modal handlers
+  const handleOpenExtraChargesModal = () => {
+    let list = [];
+    const reasonStr = invoiceForm.extra_charges_reason || '';
+    const summaryAmt = parseFloat(invoiceForm.extra_charges) || 0;
+    
+    if (reasonStr.trim().startsWith('[')) {
+      try {
+        const parsed = JSON.parse(reasonStr);
+        if (Array.isArray(parsed)) {
+          list = parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse extra charges JSON:', e);
+      }
+    } else if (summaryAmt > 0) {
+      list = [{
+        amount: invoiceForm.extra_charges,
+        type: invoiceForm.extra_charges_type || 'add',
+        reason: reasonStr
+      }];
+    }
+    
+    setExtraChargesList(list);
+    setExtraChargesInput({
+      amount: '0.00',
+      type: '',
+      reason: ''
+    });
+    setShowExtraChargesModal(true);
+  };
+
+  const handleSelectExtraChargesType = (typeVal) => {
+    setExtraChargesInput(prev => ({ ...prev, type: typeVal }));
+    setTimeout(() => {
+      if (amountInputRef.current) {
+        amountInputRef.current.focus();
+        amountInputRef.current.select();
+      }
+    }, 50);
+  };
+
+  const handleAddChargeToList = () => {
+    const amt = parseFloat(extraChargesInput.amount) || 0;
+    if (amt <= 0) {
+      triggerAlert('Please enter a valid amount greater than 0.', 'warning');
+      return;
+    }
+    if (!extraChargesInput.type) {
+      triggerAlert('Please select a type (Add or Cut).', 'warning');
+      return;
+    }
+    const newCharge = {
+      amount: amt.toFixed(2),
+      type: extraChargesInput.type,
+      reason: extraChargesInput.reason.trim()
+    };
+    setExtraChargesList(prev => [...prev, newCharge]);
+    setExtraChargesInput({
+      amount: '0.00',
+      type: '',
+      reason: ''
+    });
+  };
+
+  const handleRemoveChargeFromList = (index) => {
+    setChargeToDelete(index);
+  };
+
+  const handleConfirmDeleteCharge = () => {
+    if (chargeToDelete !== null) {
+      setExtraChargesList(prev => prev.filter((_, idx) => idx !== chargeToDelete));
+      setChargeToDelete(null);
+    }
+  };
+
+  const handleApplyExtraCharges = () => {
+    let netTotal = 0;
+    extraChargesList.forEach(item => {
+      const val = parseFloat(item.amount) || 0;
+      if (item.type === 'cut') {
+        netTotal -= val;
+      } else {
+        netTotal += val;
+      }
+    });
+
+    const isCut = netTotal < 0;
+    const finalAmount = Math.abs(netTotal).toFixed(2);
+    const finalType = isCut ? 'cut' : 'add';
+    const finalReason = JSON.stringify(extraChargesList);
+
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: finalAmount,
+      extra_charges_type: finalType,
+      extra_charges_reason: finalReason
+    }));
+    setShowExtraChargesModal(false);
+  };
+
+  const handleClearExtraCharges = () => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: '0.00',
+      extra_charges_type: 'add',
+      extra_charges_reason: ''
+    }));
+    setShowExtraChargesModal(false);
   };
 
   // Add dynamic row
@@ -515,7 +664,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
   };
 
   // Inline edit field definitions and helper handlers
-  const EDITABLE_FIELDS = ['p_ch_no', 'lot_no', 'design', 'meter', 't_qty', 'p_qty', 's_qty', 'qty', 'rate'];
+  const EDITABLE_FIELDS = ['p_ch_no', 'lot_no', 'design', 'meter', 't_qty', 'p_qty', 's_qty', 'rate'];
 
   const navigateCell = (rowIndex, field, direction) => {
     const fieldIndex = EDITABLE_FIELDS.indexOf(field);
@@ -620,7 +769,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
   };
 
   const renderEditableCell = (index, field, type, extraClasses = '') => {
-    const isEditing = editingCell && editingCell.rowIndex === index && editingCell.field === field;
+    const isEditing = field !== 'qty' && editingCell && editingCell.rowIndex === index && editingCell.field === field;
     const item = items[index];
     const isText = type === 'text';
 
@@ -648,13 +797,13 @@ export default function CreateChallan({ triggerAlert, mode }) {
       <td
         className="p-0"
         style={{
-          cursor: 'pointer',
+          cursor: field === 'qty' ? 'default' : 'pointer',
           height: '38px',
           verticalAlign: 'middle',
           position: 'relative', // relative context for overlay positioning
           ...widthStyle
         }}
-        onClick={() => !saving && setEditingCell({ rowIndex: index, field })}
+        onClick={() => !saving && field !== 'qty' && setEditingCell({ rowIndex: index, field })}
       >
         {/* Normal Flow Content: Always rendered to calculate layout width and height stably */}
         <div
@@ -667,7 +816,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
             boxSizing: 'border-box',
             padding: '6px 8px',
             margin: 0,
-            backgroundColor: 'transparent',
+            backgroundColor: field === 'qty' ? '#e9ecef' : 'transparent',
             minHeight: 'unset',
             lineHeight: '1.4',
             fontFamily: 'inherit',
@@ -738,8 +887,12 @@ export default function CreateChallan({ triggerAlert, mode }) {
       broker: '',
       discount_percent: '0.00',
       blouse_charge: '0.00',
-      sgst_percent: '2.50',
-      cgst_percent: '2.50'
+      extra_charges: '0.00',
+      extra_charges_type: 'add',
+      extra_charges_reason: '',
+      sgst_percent: '0.00',
+      cgst_percent: '0.00',
+      is_challan: true
     });
     setCustomerForm({
       name: '',
@@ -791,7 +944,8 @@ export default function CreateChallan({ triggerAlert, mode }) {
     const discountPercent = parseFloat(invoiceForm.discount_percent) || 0;
     const discount_amount = (gross_amount * discountPercent) / 100;
     const blouseCharge = parseFloat(invoiceForm.blouse_charge) || 0;
-    const subtotal = gross_amount - discount_amount + blouseCharge;
+    const extraCharges = parseFloat(invoiceForm.extra_charges) || 0;
+    const subtotal = gross_amount - discount_amount + blouseCharge + (invoiceForm.extra_charges_type === 'cut' ? -extraCharges : extraCharges);
 
     const sgstPercent = 0;
     const sgst_amount = 0;
@@ -823,7 +977,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
         amount_in_words
       }
     };
-  }, [items]);
+  }, [items, invoiceForm.discount_percent, invoiceForm.blouse_charge, invoiceForm.extra_charges, invoiceForm.extra_charges_type]);
 
   const handleClosePreview = () => {
     if (previewBlobUrl) {
@@ -831,7 +985,20 @@ export default function CreateChallan({ triggerAlert, mode }) {
       setPreviewBlobUrl(null);
     }
     setPreviewInvoiceId(null);
+    setPreviewBillNumber('');
     navigate('/invoice-history');
+  };
+
+  const handleDownloadPreviewPdf = () => {
+    if (!previewBlobUrl) return;
+    const link = document.createElement('a');
+    link.href = previewBlobUrl;
+    const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
+    const prefix = 'Challan';
+    link.setAttribute('download', `${prefix}_${cleanBillNo}.pdf`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   };
 
   // Fetch PDF as blob when previewInvoiceId changes (fixes Electron app:// protocol PDF rendering)
@@ -839,12 +1006,33 @@ export default function CreateChallan({ triggerAlert, mode }) {
     if (!previewInvoiceId) {
       return;
     }
+
+    const isElectron = window.electron && window.electron.isElectron;
+    if (!isElectron) {
+      // Browser environment: load the PDF URL directly to preserve Content-Disposition filename
+      setPreviewBlobUrl(`/api/invoices/pdf/${previewInvoiceId}/`);
+      setPreviewLoading(false);
+      return;
+    }
+
+    // Electron environment: fetch as blob to bypass CORS/mixed content iframe restrictions
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
       .then(blob => {
         if (!cancelled) {
-          const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+          const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
+          const prefix = 'Challan';
+          const filename = `${prefix}_${cleanBillNo}.pdf`;
+          
+          // Set filename for Electron download dialog
+          if (window.electron && window.electron.setPreviewFilename) {
+            window.electron.setPreviewFilename(filename);
+          }
+
+          // Use File object to set default download filename inside chromium PDF viewer
+          const file = new File([blob], filename, { type: 'application/pdf' });
+          const url = URL.createObjectURL(file);
           setPreviewBlobUrl(url);
         }
       })
@@ -852,13 +1040,14 @@ export default function CreateChallan({ triggerAlert, mode }) {
         console.error('Failed to load PDF preview:', err);
         if (!cancelled) {
           setPreviewInvoiceId(null);
+          setPreviewBillNumber('');
         }
       })
       .finally(() => {
         if (!cancelled) setPreviewLoading(false);
       });
     return () => { cancelled = true; };
-  }, [previewInvoiceId]);
+  }, [previewInvoiceId, previewBillNumber]);
 
   // Form submission handler
   const handleSubmit = async (e) => {
@@ -936,6 +1125,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
         response = await invoiceAPI.add(payload);
         triggerAlert(`Delivery Challan ${response.bill_number} created successfully.`, 'success');
       }
+      setPreviewBillNumber(response.bill_number || '');
       setPreviewInvoiceId(response.id);
     } catch (err) {
       console.error('Failed to save invoice:', err);
@@ -1233,18 +1423,18 @@ export default function CreateChallan({ triggerAlert, mode }) {
             <table className="table table-bordered table-sm align-middle invoice-table mb-0">
               <thead className="table-dark text-center small text-uppercase">
                 <tr>
-                  <th className="col-nowrap" style={{ width: '40px' }}>No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '90px' }}>P.Ch.No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '90px' }}>Lot No</th>
-                  <th className="col-wrap-text" style={{ minWidth: '150px' }}>Design</th>
-                  <th className="col-nowrap" style={{ minWidth: '80px' }}>Meter</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>T.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>P.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '70px' }}>S.Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '80px' }}>Qty</th>
-                  <th className="col-nowrap" style={{ minWidth: '90px' }}>Rate</th>
-                  <th className="col-nowrap" style={{ minWidth: '120px' }}>Amount</th>
-                  <th className="col-nowrap" style={{ width: '50px' }}>Action</th>
+                  <th className="col-nowrap text-center align-middle" style={{ width: '40px' }}>No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>P.Ch.No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>Lot No</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '150px' }}>Design</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Meter</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Total<br/>Qty</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Plain<br/>Qty</th>
+                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Short<br/>Qty</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Qty</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '90px' }}>Rate</th>
+                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '120px' }}>Amount</th>
+                  <th className="col-nowrap text-center align-middle" style={{ width: '50px' }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -1253,9 +1443,9 @@ export default function CreateChallan({ triggerAlert, mode }) {
                   return (
                     <tr key={index}>
                       <td className="text-center align-middle row-number col-nowrap">{index + 1}</td>
-                      {renderEditableCell(index, 'p_ch_no', 'text', 'item-pch col-wrap-text')}
-                      {renderEditableCell(index, 'lot_no', 'text', 'item-lot col-wrap-text')}
-                      {renderEditableCell(index, 'design', 'text', 'item-design col-wrap-text')}
+                      {renderEditableCell(index, 'p_ch_no', 'text', 'text-center item-pch col-wrap-text')}
+                      {renderEditableCell(index, 'lot_no', 'text', 'text-center item-lot col-wrap-text')}
+                      {renderEditableCell(index, 'design', 'text', 'text-center item-design col-wrap-text')}
                       {renderEditableCell(index, 'meter', 'number', 'text-center item-meter col-nowrap')}
                       {renderEditableCell(index, 't_qty', 'number', 'text-center item-tqty col-nowrap')}
                       {renderEditableCell(index, 'p_qty', 'number', 'text-center item-pqty col-nowrap')}
@@ -1311,86 +1501,355 @@ export default function CreateChallan({ triggerAlert, mode }) {
           </div>
 
           <div className="card p-3 border bg-light-subtle mt-2 mb-4">
-            <div className="row g-3">
-              {/* Left side: Amount in Words */}
-              <div className="col-lg-6 col-md-12 col-12">
-                <label className="form-label fw-bold invoice-form-label mb-1">Amount In Words</label>
-                <textarea
-                  className="form-control form-control-sm bg-light text-muted"
-                  value={calculations.summary.amount_in_words}
-                  readOnly
-                  disabled
-                  rows="2"
-                  style={{ resize: 'none', height: '62px' }}
-                />
+            <div className="row g-2 mt-0">
+              {/* Left side: Discount table */}
+              <div className="col-lg-4 col-md-6 col-12 order-lg-1 order-md-1 order-1">
+                <div className="card p-2 border-0 bg-light h-100">
+                  <div className="row g-2 mb-2">
+                    <div className="col-6">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Gross Amount (<Rupee />)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-light text-muted text-end"
+                        value={formatAmount(calculations.summary.gross_amount)}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Discount %</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="discount_percent"
+                        className="form-control form-control-sm"
+                        value={invoiceForm.discount_percent}
+                        onChange={handleFormChange}
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                  <div className="row g-2 mb-2">
+                    <div className="col-6">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Discount Amount (<Rupee />)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-light text-muted text-end"
+                        value={formatAmount(calculations.summary.discount_amount)}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Blouse Charge (<Rupee />)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        name="blouse_charge"
+                        className="form-control form-control-sm"
+                        value={invoiceForm.blouse_charge}
+                        onChange={handleFormChange}
+                        disabled={saving}
+                      />
+                    </div>
+                  </div>
+                  <div className="row g-2">
+                    <div className="col-12">
+                      <div className="d-flex justify-content-between align-items-center mb-1">
+                        <label className="form-label fw-bold invoice-form-label mb-0">Sub Total (<Rupee />)</label>
+                        <button
+                          type="button"
+                          className="btn btn-link p-0 text-decoration-none fw-bold text-primary"
+                          style={{ fontSize: '0.75rem', outline: 'none', boxShadow: 'none' }}
+                          onClick={handleOpenExtraChargesModal}
+                          disabled={saving}
+                        >
+                          {invoiceForm.extra_charges && parseFloat(invoiceForm.extra_charges) > 0 ? (
+                            (() => {
+                              let label = `Extra: ${invoiceForm.extra_charges_type === 'cut' ? '-' : '+'}${formatAmount(invoiceForm.extra_charges)}`;
+                              const reasonStr = invoiceForm.extra_charges_reason || '';
+                              if (reasonStr.trim().startsWith('[')) {
+                                try {
+                                  const parsed = JSON.parse(reasonStr);
+                                  if (Array.isArray(parsed) && parsed.length > 0) {
+                                    if (parsed.length === 1) {
+                                      label += parsed[0].reason ? ` (${parsed[0].reason})` : '';
+                                    } else {
+                                      label += ` (${parsed.length} items)`;
+                                    }
+                                  }
+                                } catch (e) {}
+                              } else if (reasonStr) {
+                                label += ` (${reasonStr})`;
+                              }
+                              return <span>{label} (Edit)</span>;
+                            })()
+                          ) : (
+                            "+ Extra Charges"
+                          )}
+                        </button>
+                      </div>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-light text-muted text-end"
+                        value={formatAmount(calculations.summary.subtotal)}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {/* Right side: Round off & Grand Amount */}
-              <div className="col-lg-6 col-md-12 col-12 d-flex align-items-center">
-                <div className="row g-2 w-100">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-1">Round Off (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.round_off)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label text-success mb-1 fw-bold" style={{ fontSize: '16.5px' }}>Grand Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-success fw-bold text-end"
-                      style={{ fontSize: '1.1rem', color: '#198754' }}
-                      value={`Rs. ${formatAmount(calculations.summary.amount)}`}
-                      readOnly
-                    />
+              {/* Middle part: Buttons & Amount in Words */}
+              <div className="col-lg-4 col-md-12 col-12 order-lg-2 order-md-3 order-3 d-flex flex-column justify-content-between">
+                <div className="card p-2 border-0 bg-light flex-grow-1 mb-2">
+                  <label className="form-label fw-bold invoice-form-label mb-0">Amount In Words</label>
+                  <textarea
+                    className="form-control form-control-sm bg-light text-muted flex-grow-1 mt-1"
+                    value={calculations.summary.amount_in_words}
+                    readOnly
+                    disabled
+                    rows="2"
+                    style={{ resize: 'none' }}
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="d-flex justify-content-center gap-2 mt-auto">
+                  {mode === 'Edit' ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/invoice-history')}
+                      className="btn btn-light border btn-sm px-3"
+                    >
+                      Back
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleClearForm}
+                      className="btn btn-light border btn-sm px-3"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-sm px-4"
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <i className="bi bi-check-circle me-1"></i> Save Delivery Challan
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right side: Round Off & Grand Amount */}
+              <div className="col-lg-4 col-md-6 col-12 order-lg-3 order-md-2 order-2">
+                <div className="card p-2 border-0 bg-light h-100">
+                  <div className="row g-2">
+                    <div className="col-6">
+                      <label className="form-label fw-bold invoice-form-label mb-0">Round Off (<Rupee />)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-light text-muted text-end"
+                        value={formatAmount(calculations.summary.round_off)}
+                        readOnly
+                        disabled
+                      />
+                    </div>
+                    <div className="col-6">
+                      <label className="form-label text-success mb-0 fw-bold" style={{ fontSize: '16.5px' }}>Grand Amount (<Rupee />)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm bg-light text-success fw-bold text-end"
+                        style={{ fontSize: '1.1rem', color: '#198754' }}
+                        value={`Rs. ${formatAmount(calculations.summary.amount)}`}
+                        readOnly
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Actions (centered at the bottom) */}
-            <div className="d-flex justify-content-center gap-2 mt-4">
-              {mode === 'Edit' ? (
-                <button
-                  type="button"
-                  onClick={() => navigate('/invoice-history')}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Back
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleClearForm}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Clear
-                </button>
-              )}
-              <button
-                type="submit"
-                className="btn btn-primary btn-sm px-4"
-                disabled={saving}
-              >
-                {saving ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-check-circle me-1"></i> Save Delivery Challan
-                  </>
-                )}
-              </button>
-            </div>
           </div>
         </form>
       </div>
+
+      {/* Modal overlay popup for Extra Charges / Cuts */}
+      {showExtraChargesModal && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px' }}>
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title fw-bold text-primary d-flex align-items-center">
+                  <i className="bi bi-plus-slash-minus me-2"></i> Extra Charges / Cuts
+                </h5>
+                <button 
+                  type="button" 
+                  className="btn-close" 
+                  onClick={() => setShowExtraChargesModal(false)} 
+                  aria-label="Close"
+                ></button>
+              </div>
+              <div className="modal-body py-3">
+                {/* 1. List of Added Charges */}
+                <div className="mb-3">
+                  <label className="form-label fw-bold small mb-2 text-secondary">Added Charges / Cuts ({extraChargesList.length})</label>
+                  {extraChargesList.length === 0 ? (
+                    <div className="text-muted text-center py-2 bg-light rounded" style={{ fontSize: '0.85rem', border: '1px dashed #cbd5e1' }}>
+                      No extra charges or cuts added yet.
+                    </div>
+                  ) : (
+                    <div className="border rounded charges-scroll-container" style={{ height: '110px', overflowY: 'auto' }}>
+                      <table className="table table-sm table-borderless mb-0" style={{ fontSize: '0.9rem' }}>
+                        <thead className="table-light border-bottom" style={{ fontSize: '0.8rem', position: 'sticky', top: 0, zIndex: 1 }}>
+                          <tr>
+                            <th className="px-2 py-1">Type</th>
+                            <th className="px-2 py-1 text-end">Amount</th>
+                            <th className="px-2 py-1">Reason</th>
+                            <th className="px-2 py-1 text-center" style={{ width: '40px' }}>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {extraChargesList.map((item, idx) => (
+                            <tr key={idx} className="border-bottom align-middle">
+                              <td className="px-2 py-1">
+                                <span className={`badge ${item.type === 'add' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} rounded-pill`} style={{ fontSize: '0.75rem' }}>
+                                  {item.type === 'add' ? 'Add' : 'Cut'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1 text-end fw-bold">₹ {formatAmount(item.amount)}</td>
+                              <td className="px-2 py-1 text-truncate" style={{ maxWidth: '120px' }} title={item.reason}>
+                                {item.reason || '-'}
+                              </td>
+                              <td className="px-2 py-1 text-center">
+                                <button
+                                  type="button"
+                                  className="btn btn-link btn-sm text-danger p-0 border-0"
+                                  onClick={() => handleRemoveChargeFromList(idx)}
+                                >
+                                  <i className="bi bi-trash-fill"></i>
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <hr className="my-3" />
+
+                {/* 2. Form to Add New Charge */}
+                <div className="mt-2">
+                  <div className="fw-bold small mb-2 text-primary" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
+                  
+                  <div className="mb-2.5">
+                    <label className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Type</label>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'add' ? 'btn-primary' : 'btn-outline-primary'}`}
+                        onClick={() => handleSelectExtraChargesType('add')}
+                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                      >
+                        <i className="bi bi-plus-circle me-1"></i> Add
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'cut' ? 'btn-danger' : 'btn-outline-danger'}`}
+                        onClick={() => handleSelectExtraChargesType('cut')}
+                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
+                      >
+                        <i className="bi bi-dash-circle me-1"></i> Cut
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mb-2.5">
+                    <label htmlFor="extra-charges-amount-challan" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Amount (₹)</label>
+                    <input
+                      ref={amountInputRef}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      id="extra-charges-amount-challan"
+                      className="form-control form-control-sm"
+                      style={{ fontSize: '0.85rem' }}
+                      placeholder="0.00"
+                      value={extraChargesInput.amount}
+                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, amount: e.target.value }))}
+                      disabled={!extraChargesInput.type}
+                      autoFocus={!!extraChargesInput.type}
+                      onFocus={(e) => e.target.select()}
+                    />
+                  </div>
+
+                  <div className="mb-2">
+                    <label htmlFor="extra-charges-reason-challan" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Reason</label>
+                    <input
+                      type="text"
+                      id="extra-charges-reason-challan"
+                      className="form-control form-control-sm"
+                      style={{ fontSize: '0.85rem' }}
+                      placeholder="e.g. Transport, Special Discount"
+                      value={extraChargesInput.reason}
+                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, reason: e.target.value }))}
+                      disabled={!extraChargesInput.type}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary btn-sm w-100 mt-2 d-flex align-items-center justify-content-center gap-1 fw-bold"
+                    style={{ height: '32px', fontSize: '0.8rem' }}
+                    onClick={handleAddChargeToList}
+                    disabled={!extraChargesInput.type}
+                  >
+                    <i className="bi bi-plus-lg"></i> Add to List
+                  </button>
+                </div>
+              </div>
+              <div className="modal-footer border-0 pt-0 d-flex justify-content-between">
+                <button
+                  type="button"
+                  onClick={handleClearExtraCharges}
+                  className="btn btn-outline-secondary btn-sm px-3"
+                >
+                  Clear All
+                </button>
+                <div className="d-flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowExtraChargesModal(false)}
+                    className="btn btn-light border btn-sm px-3"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyExtraCharges}
+                    className="btn btn-primary btn-sm px-3"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal overlay popup for Duplicate Bill Number */}
       {showDuplicateModal && (
@@ -1603,13 +2062,60 @@ export default function CreateChallan({ triggerAlert, mode }) {
                   ></iframe>
                 )}
               </div>
-              <div className="modal-footer border-0 py-2">
+              <div className="modal-footer border-0 py-2 d-flex justify-content-end gap-2 w-100">
                 <button
                   type="button"
                   onClick={handleClosePreview}
                   className="btn btn-secondary btn-sm px-4"
+                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   Close & Go to History
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadPreviewPdf}
+                  className="btn btn-primary btn-sm px-4"
+                  disabled={!previewBlobUrl}
+                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <i className="bi bi-download me-1"></i> Download PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal overlay popup for Confirm Delete Charge */}
+      {chargeToDelete !== null && (
+        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header border-0 pb-0">
+                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
+                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Delete Extra Charge
+                </h5>
+                <button type="button" className="btn-close" onClick={() => setChargeToDelete(null)} aria-label="Close"></button>
+              </div>
+              <div className="modal-body py-3">
+                <p className="mb-0">
+                  Are you sure you want to delete this extra charge/cut of <strong>₹ {formatAmount(extraChargesList[chargeToDelete]?.amount)}</strong> ({extraChargesList[chargeToDelete]?.reason || 'no reason'})?
+                </p>
+              </div>
+              <div className="modal-footer border-0 pt-0">
+                <button
+                  type="button"
+                  onClick={() => setChargeToDelete(null)}
+                  className="btn btn-light border btn-sm px-3"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteCharge}
+                  className="btn btn-danger btn-sm px-3"
+                >
+                  Delete
                 </button>
               </div>
             </div>

@@ -32,7 +32,7 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
         <nav className="navbar navbar-expand-lg navbar-dark no-print" style={{ backgroundColor: 'var(--sidebar-bg)', padding: '12px 20px', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }}>
           <div className="container-fluid">
             {/* Logo / Brand */}
-            <Link className="navbar-brand fw-bold d-flex align-items-center me-4" to="/create-invoice">
+            <Link className="navbar-brand fw-bold d-flex align-items-center me-4" to="/dashboard">
               <img 
                 src={logo} 
                 alt="Logo" 
@@ -64,6 +64,11 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
             <div className="collapse navbar-collapse" id="topNavbarContent">
               {/* Left Side Links */}
               <ul className="navbar-nav me-auto mb-2 mb-lg-0">
+                <li className="nav-item me-2">
+                  <Link className={`nav-link px-3 py-2 rounded ${isActive(['/dashboard'])}`} to="/dashboard">
+                    <i className="bi bi-speedometer2 me-1"></i> Dashboard
+                  </Link>
+                </li>
                 <li className="nav-item me-2">
                   <Link className={`nav-link px-3 py-2 rounded ${isActive(['/create-invoice'])}`} to="/create-invoice">
                     <i className="bi bi-plus-circle me-1"></i> Create Invoice
@@ -109,8 +114,20 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
       <div id="content" style={{ padding: '30px', minHeight: 'calc(100vh - 65px)', display: 'flex', flexDirection: 'column' }}>
         {/* Message Notification Alert Section */}
         {alert && (
-          <div className="container-fluid p-0 no-print mb-4">
-            <div className={`alert alert-${alert.type} alert-dismissible fade show`} role="alert">
+          <div 
+            className="no-print" 
+            style={{ 
+              position: 'fixed', 
+              top: '80px', 
+              right: '30px', 
+              zIndex: 10000, 
+              minWidth: '280px',
+              maxWidth: 'calc(100vw - 60px)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
+              borderRadius: '8px'
+            }}
+          >
+            <div className={`alert alert-${alert.type} alert-dismissible fade show mb-0`} role="alert" style={{ borderRadius: '8px' }}>
               {alert.message}
               <button type="button" className="btn-close" onClick={clearAlert} aria-label="Close"></button>
             </div>

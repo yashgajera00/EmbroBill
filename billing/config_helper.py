@@ -9,10 +9,10 @@ from datetime import datetime, date
 OBFUSCATION_KEY = b"EmbroBillSecretSecureKey2026!"
 
 # Default configuration values obfuscated using standard base64 and custom XOR
-DEFAULT_COMPANY_NAME = 'BCwxJicDSS8+FiQ3Oyo6'
-DEFAULT_GST_NUMBER = 'd1khPzoSOV1bYlcpQz8m'
-DEFAULT_PAN_NUMBER = 'BiA3Ij9zXl1eGQ=='
-DEFAULT_PLAN_EXPIRY_DATE = 'd11QRUJyX0FeZw=='
+DEFAULT_COMPANY_NAME = ''
+DEFAULT_GST_NUMBER = ''
+DEFAULT_PAN_NUMBER = ''
+DEFAULT_PLAN_EXPIRY_DATE = ''
 
 def obfuscate(value: str) -> str:
     if not value:
