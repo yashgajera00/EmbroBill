@@ -732,6 +732,7 @@ def customer_history(request, pk):
 
 @api_login_required
 def invoice_list(request):
+    q = request.GET.get('q', '').strip()
     q_bill = request.GET.get('q_bill', '')
     q_cust = request.GET.get('q_cust', '')
     date_from = request.GET.get('date_from', '')
@@ -739,6 +740,13 @@ def invoice_list(request):
     
     invoices = Invoice.objects.all().prefetch_related('items').order_by('-bill_date', '-created_at')
     
+    if q:
+        invoices = invoices.filter(
+            Q(bill_number__icontains=q) |
+            Q(customer__name__icontains=q) |
+            Q(customer_name__icontains=q) |
+            Q(broker__icontains=q)
+        )
     if q_bill:
         invoices = invoices.filter(bill_number__icontains=q_bill)
     if q_cust:
@@ -754,6 +762,7 @@ def invoice_list(request):
             'id': inv.id,
             'bill_number': inv.bill_number or '-',
             'customer_name': inv.display_customer_name,
+            'broker': inv.broker or '',
             'bill_date': inv.bill_date.isoformat() if inv.bill_date else '',
             'amount': float(inv.amount),
             'note_type': inv.note_type or '',

@@ -33,7 +33,20 @@ export default function Settings({ user, onLogout, triggerAlert }) {
   const [showLicenseModal, setShowLicenseModal] = useState(false);
   const [licenseKey, setLicenseKey] = useState('');
   const [activating, setActivating] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const navigate = useNavigate();
+
+  // Close more menu on click outside
+  useEffect(() => {
+    if (!moreMenuOpen) return;
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.settings-more-dropdown-container')) {
+        setMoreMenuOpen(false);
+      }
+    };
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, [moreMenuOpen]);
 
   const [isBillFormatLocked, setIsBillFormatLocked] = useState(true);
   const [isHsnLocked, setIsHsnLocked] = useState(true);
@@ -271,51 +284,104 @@ export default function Settings({ user, onLogout, triggerAlert }) {
     <div className="app-home-wrapper">
       <div className="app-home-container">
         
-        {/* Mobile Header matching screenshot */}
-        <header className="settings-mobile-header">
-          <div className="settings-header-left">
+        {/* Top Header matching Create Invoice style */}
+        <header className="create-invoice-header justify-content-between">
+          <div className="d-flex align-items-center gap-3">
             <button
               type="button"
-              className="settings-back-btn"
-              onClick={() => navigate(-1)}
-              title="Back"
+              className="create-invoice-back-btn"
+              onClick={() => navigate('/')}
+              title="Go back to Home"
             >
               <i className="bi bi-chevron-left"></i>
             </button>
-            <i className="bi bi-gear-fill settings-gear-icon"></i>
-            <div className="settings-header-title-box">
-              <span className="settings-header-title-line1">Settings &amp;</span>
-              <span className="settings-header-title-line2">Profile</span>
-            </div>
+            <h1 className="create-invoice-header-title">
+              Settings
+            </h1>
           </div>
 
           <div className="settings-header-actions">
-            <div className="settings-id-pill" title="User ID">
-              <i className="bi bi-at"></i>
-              <span>{formData.user_id || user?.username || '246130'}</span>
+            <div className="settings-more-dropdown-container position-relative">
+              <button
+                type="button"
+                className={`settings-more-btn ${moreMenuOpen ? 'active' : ''}`}
+                onClick={() => setMoreMenuOpen(!moreMenuOpen)}
+                title="More options"
+                aria-label="More options"
+              >
+                <i className="bi bi-three-dots-vertical"></i>
+              </button>
+
+              {moreMenuOpen && (
+                <ul
+                  className="dropdown-menu dropdown-menu-end show shadow"
+                  style={{
+                    position: 'absolute',
+                    right: 0,
+                    top: 'calc(100% + 6px)',
+                    zIndex: 1050,
+                    minWidth: '150px',
+                    borderRadius: '12px',
+                    padding: '6px',
+                    border: '1px solid #e2e8f0',
+                    backgroundColor: '#ffffff',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)'
+                  }}
+                >
+                  <li>
+                    <button
+                      type="button"
+                      className="dropdown-item d-flex align-items-center gap-2 py-2 px-3 rounded-2 text-dark"
+                      style={{ fontSize: '13px', fontWeight: 500 }}
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        setShowLicenseModal(true);
+                      }}
+                    >
+                      <i className="bi bi-key text-primary" style={{ fontSize: '15px' }}></i>
+                      <span>Licence</span>
+                    </button>
+                  </li>
+                  <li>
+                    <hr className="dropdown-divider my-1" style={{ borderColor: '#f1f5f9' }} />
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      className="dropdown-item d-flex align-items-center gap-2 py-2 px-3 rounded-2 text-danger"
+                      style={{ fontSize: '13px', fontWeight: 500 }}
+                      onClick={() => {
+                        setMoreMenuOpen(false);
+                        handleLogout();
+                      }}
+                    >
+                      <i className="bi bi-box-arrow-right" style={{ fontSize: '15px' }}></i>
+                      <span>Logout</span>
+                    </button>
+                  </li>
+                </ul>
+              )}
             </div>
-            <button
-              type="button"
-              className="settings-licence-pill"
-              onClick={() => setShowLicenseModal(true)}
-              title="License Manager"
-            >
-              <i className="bi bi-key"></i> Licence
-            </button>
-            <button
-              type="button"
-              className="settings-logout-btn"
-              onClick={handleLogout}
-              title="Logout"
-            >
-              <i className="bi bi-box-arrow-right"></i>
-            </button>
           </div>
         </header>
 
-        {/* Scrollable Content */}
+        {/* Scrollable Content (Middle Part) */}
         <main className="settings-scroll-container">
           
+          {/* Customer ID Bar at top of middle part */}
+          <div className="settings-card d-flex flex-row align-items-center justify-content-between py-2.5 px-3 mb-1">
+            <div className="d-flex align-items-center gap-2">
+              <div className="settings-icon-badge blue" style={{ width: '28px', height: '28px', fontSize: '13px' }}>
+                <i className="bi bi-person-badge"></i>
+              </div>
+              <span className="fw-bold text-dark" style={{ fontSize: '13px' }}>Customer ID</span>
+            </div>
+            <div className="settings-id-pill m-0" title="Customer ID">
+              <i className="bi bi-at"></i>
+              <span>{formData.user_id || user?.username || '246130'}</span>
+            </div>
+          </div>
+
           <form onSubmit={handleSubmit} id="settingsCompanyForm">
             
             {/* 1. Company Identity Card */}
@@ -825,7 +891,7 @@ export default function Settings({ user, onLogout, triggerAlert }) {
 
         </main>
 
-        {/* Bottom Navigation Bar matching Screenshot 3 */}
+        {/* Bottom Navigation Bar */}
         <nav className="app-home-bottom-nav">
           <button 
             type="button" 
@@ -833,28 +899,28 @@ export default function Settings({ user, onLogout, triggerAlert }) {
             onClick={() => navigate('/')}
             title="Home"
           >
-            <i className="bi bi-grid-fill"></i>
+            <i className="bi bi-house-door-fill"></i>
             <span>Home</span>
           </button>
 
           <button 
             type="button" 
             className="app-home-bottom-tab"
-            onClick={() => navigate('/create-invoice')}
-            title="Invoices"
+            onClick={() => navigate('/dashboard')}
+            title="Dashboard"
           >
-            <i className="bi bi-file-earmark-text"></i>
-            <span>Invoices</span>
+            <i className="bi bi-grid-fill"></i>
+            <span>Dashboard</span>
           </button>
-
+          
           <button 
             type="button" 
             className="app-home-bottom-tab"
-            onClick={() => navigate('/create-challan')}
-            title="Challans"
+            onClick={() => navigate('/create-invoice')}
+            title="Invoices"
           >
-            <i className="bi bi-truck"></i>
-            <span>Challans</span>
+            <i className="bi bi-receipt"></i>
+            <span>Invoices</span>
           </button>
 
           <button 
@@ -865,19 +931,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
           >
             <i className="bi bi-clock-history"></i>
             <span>History</span>
-          </button>
-
-          <button 
-            type="button" 
-            className="app-home-bottom-tab active"
-            onClick={() => {}}
-            title="Settings"
-          >
-            <div style={{ position: 'relative', display: 'inline-flex' }}>
-              <i className="bi bi-gear-fill"></i>
-              <span className="settings-tab-dot"></span>
-            </div>
-            <span>Settings</span>
           </button>
         </nav>
 

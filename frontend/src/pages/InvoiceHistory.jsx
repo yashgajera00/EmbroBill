@@ -28,16 +28,12 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
   const location = useLocation();
   const initialBill = location.state?.searchBill || '';
   const [invoices, setInvoices] = useState([]);
-  const [filters, setFilters] = useState({
-    q_bill: initialBill,
-    q_cust: '',
-    date_from: '',
-    date_to: ''
-  });
+  const [searchQuery, setSearchQuery] = useState(initialBill);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [searchType, setSearchType] = useState('bill'); // 'bill', 'cust', 'date'
-  const [searchTypeDropdownOpen, setSearchTypeDropdownOpen] = useState(false);
-  const [showDocType, setShowDocType] = useState('invoices'); // 'invoices', 'challans'
+  const [showDocType, setShowDocType] = useState('all'); // 'all', 'invoices', 'challans'
   const [openCardActionId, setOpenCardActionId] = useState(null);
 
   // Modal states
@@ -67,13 +63,17 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      fetchInvoices(filters);
+      fetchInvoices({
+        q: searchQuery,
+        date_from: dateFrom,
+        date_to: dateTo
+      });
     }, 300);
 
     return () => {
       clearTimeout(handler);
     };
-  }, [filters]);
+  }, [searchQuery, dateFrom, dateTo]);
 
   // Close card action menu on outside click
   useEffect(() => {
@@ -87,66 +87,29 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [openCardActionId]);
 
-  // Close search type dropdown on outside click
-  useEffect(() => {
-    if (!searchTypeDropdownOpen) return;
-    const handleOutsideClick = (e) => {
-      if (!e.target.closest('.history-search-dropdown-container')) {
-        setSearchTypeDropdownOpen(false);
-      }
-    };
-    document.addEventListener('click', handleOutsideClick);
-    return () => document.removeEventListener('click', handleOutsideClick);
-  }, [searchTypeDropdownOpen]);
+  const allCount = invoices.length;
+  const invoicesCount = invoices.filter(inv => !inv.is_challan).length;
+  const challansCount = invoices.filter(inv => !!inv.is_challan).length;
 
   const filteredInvoices = invoices.filter(inv => {
-    if (showDocType === 'invoices') return !inv.is_challan;
-    if (showDocType === 'challans') return !!inv.is_challan;
-    return true;
+    if (showDocType === 'invoices' && inv.is_challan) return false;
+    if (showDocType === 'challans' && !inv.is_challan) return false;
+    if (!searchQuery) return true;
+    const qLower = searchQuery.toLowerCase();
+    return (
+      (inv.bill_number || '').toLowerCase().includes(qLower) ||
+      (inv.customer_name || '').toLowerCase().includes(qLower) ||
+      (inv.broker || '').toLowerCase().includes(qLower)
+    );
   });
 
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
-    setFilters(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleSearchQueryChange = (e) => {
-    const { value } = e.target;
-    setFilters(prev => ({
-      ...prev,
-      q_bill: searchType === 'bill' ? value : '',
-      q_cust: searchType === 'cust' ? value : ''
-    }));
-  };
-
-  const handleSearchTypeChange = (newType) => {
-    setSearchType(newType);
-    setSearchTypeDropdownOpen(false);
-    setFilters(prev => {
-      const currentQuery = searchType === 'bill' ? prev.q_bill : prev.q_cust;
-      return {
-        ...prev,
-        q_bill: newType === 'bill' ? (currentQuery || '') : '',
-        q_cust: newType === 'cust' ? (currentQuery || '') : '',
-        date_from: newType === 'date' ? prev.date_from : '',
-        date_to: newType === 'date' ? prev.date_to : ''
-      };
-    });
-  };
+  const hasActiveFilters = Boolean(searchQuery || dateFrom || dateTo);
 
   const handleClearFilters = () => {
-    setFilters({
-      q_bill: '',
-      q_cust: '',
-      date_from: '',
-      date_to: ''
-    });
+    setSearchQuery('');
+    setDateFrom('');
+    setDateTo('');
   };
-
-  const hasActiveFilters = Boolean(filters.q_bill || filters.q_cust || filters.date_from || filters.date_to);
 
   // Totals calculation
   const calculateTotals = () => {
@@ -187,7 +150,11 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
         triggerAlert(`${deleteInvoice.is_challan ? 'Challan' : 'Invoice'} ${deleteInvoice.bill_number || '-'} deleted successfully.`, 'success');
       }
       setDeleteInvoice(null);
-      fetchInvoices(filters);
+      fetchInvoices({
+        q: searchQuery,
+        date_from: dateFrom,
+        date_to: dateTo
+      });
     } catch (err) {
       console.error('Failed to delete invoice:', err);
       if (triggerAlert) {
@@ -393,179 +360,120 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
     <div className="invoice-history-wrapper">
       <div className="invoice-history-container">
         
-        {/* Top Fixed Header matching user screenshot */}
-        <header className="invoice-history-header">
-          {/* Row 1: Back Button & Invoices / Challans Segmented Tabs */}
-          <div className="invoice-history-top-row">
-            <button
-              type="button"
-              className="invoice-history-back-btn"
-              onClick={() => navigate('/')}
-              title="Back to Home"
-            >
-              <i className="bi bi-chevron-left"></i>
-            </button>
+        {/* Top Header matching Dashboard / Create Invoice style */}
+        <header className="create-invoice-header">
+          <button
+            type="button"
+            className="create-invoice-back-btn"
+            onClick={() => navigate('/')}
+            title="Go back to Home"
+          >
+            <i className="bi bi-chevron-left"></i>
+          </button>
+          <h1 className="create-invoice-header-title">
+            Invoice History
+          </h1>
+        </header>
 
-            <div className="invoice-history-tabs-pill">
-              <button
-                type="button"
-                className={`invoice-history-tab-btn ${showDocType === 'invoices' ? 'active' : ''}`}
-                onClick={() => setShowDocType('invoices')}
-              >
-                <i className="bi bi-receipt"></i>
-                <span>Invoices</span>
-              </button>
-              <button
-                type="button"
-                className={`invoice-history-tab-btn ${showDocType === 'challans' ? 'active' : ''}`}
-                onClick={() => setShowDocType('challans')}
-              >
-                <i className="bi bi-truck"></i>
-                <span>Delivery Challans</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Row 2: Search Input & Filter Dropdown */}
-          <div className="invoice-history-search-row">
-            <i className="bi bi-search text-muted" style={{ fontSize: '13px' }}></i>
+        {/* Scrollable Middle Body */}
+        <main className="invoice-history-body">
+          {/* Search bar with filter toggle */}
+          <div className="dashboard-mobile-search-row">
+            <i className="bi bi-search text-muted ms-1 me-1" style={{ fontSize: '13px' }}></i>
             <input
               type="text"
-              className="invoice-history-search-input"
-              placeholder={
-                searchType === 'date'
-                  ? `Filter by date below...`
-                  : `Search bill no, customer...`
-              }
-              value={searchType === 'bill' ? filters.q_bill : searchType === 'cust' ? filters.q_cust : ''}
-              onChange={handleSearchQueryChange}
+              className="dashboard-mobile-search-input"
+              placeholder="Search bill no, customer, broker..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
-
-            <div className="history-search-dropdown-container position-relative">
-              <button
-                type="button"
-                className="invoice-history-search-type-btn"
-                onClick={() => setSearchTypeDropdownOpen(!searchTypeDropdownOpen)}
-              >
-                <i className="bi bi-sliders"></i>
-                <span>
-                  {searchType === 'bill' ? 'Bill No' : searchType === 'cust' ? 'Customer' : 'Date'}
-                </span>
-                <i className="bi bi-caret-down-fill" style={{ fontSize: '8px' }}></i>
-              </button>
-
-              {searchTypeDropdownOpen && (
-                <ul
-                  className="dropdown-menu dropdown-menu-end show shadow-sm"
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: '100%',
-                    zIndex: 1050,
-                    minWidth: '140px',
-                    borderRadius: '10px'
-                  }}
-                >
-                  <li>
-                    <button
-                      type="button"
-                      className={`dropdown-item d-flex align-items-center gap-2 small ${searchType === 'bill' ? 'active' : ''}`}
-                      onClick={() => handleSearchTypeChange('bill')}
-                    >
-                      <i className="bi bi-receipt text-primary"></i> Bill No
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      className={`dropdown-item d-flex align-items-center gap-2 small ${searchType === 'cust' ? 'active' : ''}`}
-                      onClick={() => handleSearchTypeChange('cust')}
-                    >
-                      <i className="bi bi-person text-success"></i> Customer
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      type="button"
-                      className={`dropdown-item d-flex align-items-center gap-2 small ${searchType === 'date' ? 'active' : ''}`}
-                      onClick={() => handleSearchTypeChange('date')}
-                    >
-                      <i className="bi bi-calendar-event text-warning"></i> Date
-                    </button>
-                  </li>
-                </ul>
-              )}
-            </div>
+            <button
+              type="button"
+              className={`dashboard-mobile-filter-btn ${showFilterDrawer ? 'active' : ''}`}
+              onClick={() => setShowFilterDrawer(!showFilterDrawer)}
+              title="Filter by Date Range"
+            >
+              <i className="bi bi-sliders"></i> Filter
+            </button>
           </div>
 
-          {/* Active Tab Accent Bar */}
-          <div style={{ width: '24px', height: '6px', backgroundColor: '#4f46e5', borderRadius: '3px', marginTop: '2px' }}></div>
-
-          {/* Date Range Drawer (when Date is selected) */}
-          {searchType === 'date' && (
-            <div className="bg-dark p-2 rounded-3 mt-1 border border-secondary">
-              <div className="d-flex align-items-center justify-content-between mb-1">
-                <span className="text-white-50 small" style={{ fontSize: '11px', fontWeight: 600 }}>Filter by Date</span>
-                {(filters.date_from || filters.date_to) && (
+          {/* Date Filter Drawer */}
+          {showFilterDrawer && (
+            <div className="dashboard-mobile-filter-drawer">
+              <div className="d-flex align-items-center justify-content-between mb-2">
+                <span className="text-dark small fw-bold">Date Range Filter</span>
+                {(dateFrom || dateTo) && (
                   <button
                     type="button"
-                    className="btn btn-link text-primary p-0 text-decoration-none small"
-                    style={{ fontSize: '11px' }}
-                    onClick={() => {
-                      setFilters(prev => ({ ...prev, date_from: '', date_to: '' }));
-                    }}
+                    className="btn btn-link text-primary p-0 text-decoration-none small fw-semibold"
+                    onClick={() => { setDateFrom(''); setDateTo(''); }}
                   >
-                    Clear Dates
+                    Clear Filter
                   </button>
                 )}
               </div>
               <div className="row g-2">
                 <div className="col-6">
-                  <label className="text-white-50" style={{ fontSize: '10px' }}>From</label>
+                  <label className="text-muted small mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>From</label>
                   <DateInput
-                    name="date_from"
-                    className="form-control form-control-sm bg-light text-dark border-0"
-                    value={filters.date_from}
-                    onChange={handleFilterChange}
+                    className="form-control form-control-sm bg-white text-dark border"
+                    value={dateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
                   />
                 </div>
                 <div className="col-6">
-                  <label className="text-white-50" style={{ fontSize: '10px' }}>To</label>
+                  <label className="text-muted small mb-1" style={{ fontSize: '11px', fontWeight: 600 }}>To</label>
                   <DateInput
-                    name="date_to"
-                    className="form-control form-control-sm bg-light text-dark border-0"
-                    value={filters.date_to}
-                    onChange={handleFilterChange}
+                    className="form-control form-control-sm bg-white text-dark border"
+                    value={dateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Active filters clear badge */}
-          {hasActiveFilters && searchType !== 'date' && (
-            <div className="d-flex align-items-center justify-content-between mt-1">
-              <span className="text-white-50 small" style={{ fontSize: '11px' }}>Active search applied</span>
+          {/* Status / DocType Pills & Add Bill Button Row */}
+          <div className="dashboard-mobile-actions-row">
+            <div className="dashboard-status-pills">
               <button
                 type="button"
-                onClick={handleClearFilters}
-                className="btn btn-link text-danger p-0 text-decoration-none small"
-                style={{ fontSize: '11px' }}
+                className={`dashboard-status-pill ${showDocType === 'all' ? 'active' : ''}`}
+                onClick={() => setShowDocType('all')}
               >
-                <i className="bi bi-x-circle me-1"></i> Clear filter
+                All ({allCount})
+              </button>
+              <button
+                type="button"
+                className={`dashboard-status-pill ${showDocType === 'invoices' ? 'active' : ''}`}
+                onClick={() => setShowDocType('invoices')}
+              >
+                Invoices ({invoicesCount})
+              </button>
+              <button
+                type="button"
+                className={`dashboard-status-pill ${showDocType === 'challans' ? 'active' : ''}`}
+                onClick={() => setShowDocType('challans')}
+              >
+                Challans ({challansCount})
               </button>
             </div>
-          )}
-        </header>
 
-        {/* Scrollable Middle Body */}
-        <main className="invoice-history-body">
+            <button
+              type="button"
+              className="dashboard-mobile-add-btn"
+              onClick={() => navigate(showDocType === 'challans' ? '/create-challan' : '/create-invoice')}
+            >
+              <i className="bi bi-plus-lg"></i> Add Bill
+            </button>
+          </div>
+
           {/* Summary Card matching screenshot */}
           <div className="invoice-history-summary-card">
             <div>
               <div className="d-flex align-items-center gap-2 mb-1">
                 <span className="fw-bold text-uppercase" style={{ fontSize: '12px', letterSpacing: '0.4px', color: '#475569' }}>
-                  TOTAL {showDocType === 'challans' ? 'CHALLANS' : 'INVOICED'}
+                  TOTAL {showDocType === 'challans' ? 'CHALLANS' : showDocType === 'invoices' ? 'INVOICED' : 'AMOUNT'}
                 </span>
                 <span
                   className="badge"
@@ -611,7 +519,7 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
               </div>
               <h6 className="fw-bold text-dark mb-1">No records found</h6>
               <p className="text-muted small mb-3">
-                {hasActiveFilters ? 'Try changing your search filters.' : `You haven't created any ${showDocType === 'challans' ? 'delivery challans' : 'invoices'} yet.`}
+                {hasActiveFilters ? 'Try changing your search filters.' : `You haven't created any ${showDocType === 'challans' ? 'delivery challans' : showDocType === 'invoices' ? 'invoices' : 'bills or challans'} yet.`}
               </p>
               <button
                 type="button"
