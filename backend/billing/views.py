@@ -1135,7 +1135,11 @@ def serialize_dashboard_item(item):
     design_str = ", ".join(p.get('design', '') for p in products if p.get('design'))
     if not design_str and item.design:
         design_str = item.design
-        
+    linked_inv = item.invoices.order_by('-id').first()
+    invoice_id = linked_inv.id if linked_inv else None
+    invoice_bill_number = linked_inv.bill_number if linked_inv else ''
+    invoice_amount = float(linked_inv.amount) if linked_inv else total_amount
+
     return {
         'id': item.id,
         'customer_name': item.customer_name,
@@ -1153,6 +1157,9 @@ def serialize_dashboard_item(item):
         'hsn_code': products[0].get('hsn_code', '') if len(products) == 1 else '',
         'broker': item.broker,
         'products': products,
+        'invoice_id': invoice_id,
+        'invoice_bill_number': invoice_bill_number,
+        'invoice_amount': invoice_amount,
     }
 
 @api_login_required

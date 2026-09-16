@@ -1,93 +1,10 @@
 {
-  "name": "embrobill",
+  "name": "embrobill-workspace",
   "private": true,
   "version": "1.0.1",
-  "type": "module",
-  "main": "main.cjs",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "clean": "node clean.cjs",
-    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "build:frontend": "npm run clean && vite build",
-    "build:backend:x64": ".\\.venv39\\Scripts\\pyinstaller --clean -y --distpath dist-backend/x64 backend.spec",
-    "build:backend:x86": ".\\python39-x86\\Scripts\\pyinstaller --clean -y --distpath dist-backend/x86 backend.spec",
-    "build:dist:x64": "npm run build:frontend && node prepare-build.cjs --x64 && electron-builder --win --x64",
-    "build:dist:x86": "npm run build:frontend && node prepare-build.cjs --ia32 && electron-builder --win --ia32",
-    "build:dist:all": "npm run build:dist:x64 && npm run build:dist:x86"
-  },
-  "dependencies": {
-    "axios": "^1.4.0",
-    "bootstrap": "^5.3.0",
-    "bootstrap-icons": "^1.10.5",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.14.2"
-  },
-  "devDependencies": {
-    "@types/react": "^18.2.15",
-    "@types/react-dom": "^18.2.7",
-    "@vitejs/plugin-react": "^4.0.3",
-    "concurrently": "^8.2.0",
-    "electron": "12.2.3",
-    "electron-builder": "^24.4.0",
-    "eslint": "^8.45.0",
-    "eslint-plugin-react": "^7.32.2",
-    "eslint-plugin-react-hooks": "^4.6.0",
-    "eslint-plugin-react-refresh": "^0.4.3",
-    "vite": "^4.4.5",
-    "wait-on": "^7.0.1"
-  },
-  "build": {
-    "appId": "com.embrobill.billing",
-    "productName": "EmbroBill",
-    "directories": {
-      "output": "dist_electron"
-    },
-    "files": [
-      "dist/**/*",
-      "main.cjs",
-      "preload.cjs",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "dist-backend/x86/backend",
-        "to": "backend",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "db.sqlite3",
-        "to": "backend/db.sqlite3"
-      },
-      {
-        "from": "config.json",
-        "to": "backend/config.json"
-      },
-      {
-        "from": ".system_data",
-        "to": "backend/.system_data"
-      }
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "build/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": "always",
-      "createStartMenuShortcut": true,
-      "shortcutName": "EmbroBill",
-      "include": "build/installer.nsh",
-      "runAfterFinish": true,
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "artifactName": "EmbroBill Setup x86.exe"
-    }
+    "dev:frontend": "npm run --prefix frontend dev",
+    "build:frontend": "npm run --prefix frontend build",
+    "dev:backend": "cd backend && python manage.py runserver"
   }
 }

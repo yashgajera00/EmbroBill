@@ -19,9 +19,8 @@ body {
 /* --- LAYOUT --- */
 #content {
     width: 100%;
-    padding: 30px;
+    padding: 24px 0;
     min-height: calc(100vh - 65px);
-    transition: all 0.3s;
 }
 
 .navbar-nav .nav-link.active {
@@ -530,7 +529,7 @@ html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
 /* Small screens (compact windows, very small displays) */
 @media (max-width: 768px) {
     #content {
-        padding: 10px;
+        padding: 10px 0;
     }
 
     .navbar-custom {
@@ -690,6 +689,14 @@ input.no-spinner[type=number] {
 }
 
 /* --- Dashboard Table Styles --- */
+.dashboard-table {
+    background-color: #ffffff;
+}
+
+.dashboard-table tbody tr {
+    background-color: #ffffff;
+}
+
 .dashboard-table thead th {
     background-color: var(--sidebar-bg) !important;
     color: #ffffff !important;
@@ -760,4 +767,463 @@ input.no-spinner[type=number] {
 }
 .dashboard-table td .multi-product-row:not(:last-child) {
     border-bottom: 1px solid #e2e8f0;
+}
+
+/* --- Modern Invoice Status Modal (matching user mockup) --- */
+.dashboard-invoice-status-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeInBackdrop 0.2s ease-out;
+}
+
+@keyframes fadeInBackdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dashboard-invoice-status-modal {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  position: relative;
+  animation: popInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popInModal {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.dashboard-invoice-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.dashboard-invoice-status-icon-box {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background-color: #eff6ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+  font-size: 22px;
+}
+
+.dashboard-invoice-status-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dashboard-invoice-status-close-btn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.dashboard-invoice-status-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  line-height: 1.25;
+}
+
+.dashboard-invoice-status-desc {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0 0 18px 0;
+  line-height: 1.45;
+}
+
+.dashboard-invoice-status-pill-box {
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.dashboard-invoice-status-badge {
+  background-color: #dbeafe;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.3px;
+}
+
+.dashboard-invoice-status-inv-no {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dashboard-invoice-status-amount {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dashboard-invoice-status-btn-outer {
+  border: 1.5px solid #6366f1;
+  border-radius: 14px;
+  padding: 3px;
+  display: block;
+  width: 100%;
+}
+
+.dashboard-invoice-status-btn {
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 11px;
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+.dashboard-invoice-status-btn:hover {
+  background-color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+.dashboard-invoice-status-btn:active {
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   Universal Modern App Modal System (styled after invoice status mockup)
+   ========================================================================== */
+.app-modern-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: appModalFadeIn 0.2s ease-out;
+}
+
+@keyframes appModalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.app-modern-modal-card {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  max-width: 390px;
+  padding: 24px;
+  position: relative;
+  animation: appModalPopIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  text-align: left;
+}
+
+.app-modern-modal-card.wide {
+  max-width: 520px;
+}
+
+.app-modern-modal-card.extra-wide {
+  max-width: 860px;
+  width: 95%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-modern-modal-card.preview-pdf {
+  max-width: 900px;
+  width: 95%;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+}
+
+.app-modern-modal-body-scroll {
+  overflow-y: auto;
+  flex: 1 1 auto;
+  padding-right: 4px;
+}
+
+@keyframes appModalPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.app-modern-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.app-modern-modal-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.app-modern-modal-icon.blue {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+.app-modern-modal-icon.red {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.app-modern-modal-icon.amber {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.app-modern-modal-icon.green {
+  background-color: #dcfce7;
+  color: #16a34a;
+}
+
+.app-modern-modal-icon.indigo {
+  background-color: #e0e7ff;
+  color: #4f46e5;
+}
+
+.app-modern-modal-close-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #f1f5f9;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-modern-modal-close-btn:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.app-modern-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  line-height: 1.25;
+}
+
+.app-modern-modal-desc {
+  font-size: 13.5px;
+  color: #64748b;
+  margin: 0 0 18px 0;
+  line-height: 1.5;
+}
+
+.app-modern-modal-pill-box {
+  background-color: #f8fafc;
+  border: 1px solid #f1f5f9;
+  border-radius: 14px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.app-modern-modal-actions-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.app-modern-modal-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.app-modern-modal-actions-row > * {
+  flex: 1;
+}
+
+.app-modern-btn-primary {
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+  transition: all 0.2s ease;
+}
+
+.app-modern-btn-primary:hover {
+  background-color: #1d4ed8;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+
+.app-modern-btn-danger {
+  background-color: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.25);
+  transition: all 0.2s ease;
+}
+
+.app-modern-btn-danger:hover {
+  background-color: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.35);
+}
+
+.app-modern-btn-amber {
+  background-color: #f59e0b;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+  transition: all 0.2s ease;
+}
+
+.app-modern-btn-amber:hover {
+  background-color: #d97706;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35);
+}
+
+.app-modern-btn-secondary {
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  width: 100%;
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-modern-btn-secondary:hover {
+  background-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.app-modern-modal-input {
+  background-color: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #0f172a;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.app-modern-modal-input:focus {
+  border-color: #2563eb;
+  background-color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
 }

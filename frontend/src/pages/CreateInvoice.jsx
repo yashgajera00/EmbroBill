@@ -7,6 +7,7 @@ import dashboardAPI from '../services/dashboardAPI';
 import { convertNumberToWords } from '../utils/numberToWords';
 import Rupee from '../utils/Rupee';
 import DateInput from '../utils/DateInput';
+import '../styles/appHome.css';
 
 const formatAmount = (val) => {
   const num = parseFloat(val);
@@ -131,7 +132,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   const [pendingDashboardItems, setPendingDashboardItems] = useState([]);
   const [allDesigns, setAllDesigns] = useState([]);
   const [selectedPendingItemId, setSelectedPendingItemId] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(mode === 'Edit');
   const [saving, setSaving] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -153,6 +154,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   const [showDifferentHsnModal, setShowDifferentHsnModal] = useState(false);
   const [editingCell, setEditingCell] = useState(null); // { rowIndex: number, field: string }
   const [showExtraChargesModal, setShowExtraChargesModal] = useState(false);
+  const [extraChargesClosing, setExtraChargesClosing] = useState(false);
   const [showDesignsModal, setShowDesignsModal] = useState(false);
   const [modalProducts, setModalProducts] = useState([]);
   const amountInputRef = useRef(null);
@@ -486,7 +488,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   // Initial load
   useEffect(() => {
     const initializeData = async () => {
-      setLoading(true);
+      if (mode === 'Edit') setLoading(true);
       // Reset all form/item/linked states to avoid dirty data when changing routes/modes
       setInvoiceForm({
         customer: '',
@@ -832,6 +834,47 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
     // Open the designs selection modal
     openDesignsModalForCustomer(item.customer_name);
+  };
+
+  const handleSelectCustomer = (c) => {
+    if (!c) return;
+    setInvoiceForm(prev => ({
+      ...prev,
+      customer: c.id
+    }));
+    setIsEditingCustomer(false);
+    setCustomerForm({
+      name: c.name || '',
+      address: c.address || '',
+      gst_number: c.gst_number || ''
+    });
+    setDropdownOpen(false);
+    openDesignsModalForCustomer(c.name);
+  };
+
+  const [isSearchingGst, setIsSearchingGst] = useState(false);
+
+  const handleGstSearch = async () => {
+    const gst = (customerForm.gst_number || '').trim();
+    if (!gst) {
+      if (triggerAlert) triggerAlert('Please enter a GST number to search.', 'warning');
+      return;
+    }
+    setIsSearchingGst(true);
+    try {
+      const results = await customersAPI.search(gst);
+      if (results && results.length > 0) {
+        const matched = results.find(c => c.gst_number && c.gst_number.toUpperCase() === gst.toUpperCase()) || results[0];
+        handleSelectCustomer(matched);
+        if (triggerAlert) triggerAlert(`Found customer: ${matched.name}`, 'success');
+      } else {
+        if (triggerAlert) triggerAlert('No existing customer found with this GST number.', 'info');
+      }
+    } catch (err) {
+      console.error('GST search failed:', err);
+    } finally {
+      setIsSearchingGst(false);
+    }
   };
 
   const filteredPendingItems = useMemo(() => {
@@ -1480,6 +1523,14 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     }
   };
 
+  const handleCloseExtraChargesModal = () => {
+    setExtraChargesClosing(true);
+    setTimeout(() => {
+      setShowExtraChargesModal(false);
+      setExtraChargesClosing(false);
+    }, 220);
+  };
+
   const handleApplyExtraCharges = () => {
     let netTotal = 0;
     extraChargesList.forEach(item => {
@@ -1502,7 +1553,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       extra_charges_type: finalType,
       extra_charges_reason: finalReason
     }));
-    setShowExtraChargesModal(false);
+    handleCloseExtraChargesModal();
   };
 
   const handleClearExtraCharges = () => {
@@ -1512,7 +1563,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       extra_charges_type: 'add',
       extra_charges_reason: ''
     }));
-    setShowExtraChargesModal(false);
+    handleCloseExtraChargesModal();
   };
 
   // Dynamic calculations via useMemo for live updates
@@ -1769,802 +1820,869 @@ export default function CreateInvoice({ triggerAlert, mode }) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="container-fluid p-0">
-        <div className="text-center py-5" style={{ padding: '24px 0' }}>
-          <div className="spinner-border text-primary" role="status">
-            <span className="visually-hidden">Loading...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
-    <div className="container-fluid p-0 d-flex flex-column flex-grow-1" style={{ marginTop: '-10px' }}>
-      <div className="flex-grow-1 d-flex flex-column mb-0" style={{ padding: '0 0 24px 0' }}>
-        <div className="card-title mb-4 d-flex align-items-center justify-content-between flex-wrap gap-3">
-          <span className="fs-3 fw-bold">
-            <i className={`bi ${mode === 'Edit' ? 'bi-pencil-square' : 'bi-file-earmark-plus'} me-2 text-primary`}></i>
+    <div className="create-invoice-wrapper">
+      <div className="create-invoice-container">
+        {/* Top Header */}
+        <header className="create-invoice-header">
+          <button 
+            type="button" 
+            className="create-invoice-back-btn"
+            onClick={() => navigate(-1)}
+            title="Go back"
+          >
+            <i className="bi bi-chevron-left"></i>
+          </button>
+          <h1 className="create-invoice-header-title">
             {mode === 'Edit' ? 'Edit Invoice' : 'Create Invoice'}
-          </span>
-        </div>
-        <form onSubmit={handleSubmit} id="invoice-form">
-          <div className="card p-3 border bg-light-subtle mb-4">
-            <div className="row g-3">
-              {/* Row 1 */}
-              {/* Customer Name / Suggestion Dropdown */}
-              <div className="col-lg-4 col-md-6 col-12 customer-dropdown-container position-relative">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Customer Name</label>
-                <div className="input-group">
+          </h1>
+        </header>
+
+        <form onSubmit={handleSubmit} id="invoice-form" className="create-invoice-body">
+          {loading ? (
+            <div className="text-center py-5 my-5">
+              <div className="spinner-border text-primary" role="status">
+                <span className="visually-hidden">Loading...</span>
+              </div>
+            </div>
+          ) : (
+            <>
+          {/* Card 1: BILL & CUSTOMER DETAILS */}
+          <div className="create-invoice-card">
+            <div className="create-invoice-card-header">
+              <div className="create-invoice-card-header-left">
+                <div className="create-invoice-card-icon blue">
+                  <i className="bi bi-file-earmark-text"></i>
+                </div>
+                <h2 className="create-invoice-card-title">BILL & CUSTOMER DETAILS</h2>
+              </div>
+            </div>
+
+            {/* Bill Number & Date */}
+            <div className="row g-2 mb-3">
+              <div className="col-6">
+                <label className="create-invoice-label">BILL NUMBER</label>
+                <div className="create-invoice-input-wrap">
                   <input
                     type="text"
-                    name="name"
-                    className="form-control"
-                    placeholder="Enter Customer Name"
-                    value={customerForm.name}
-                    onChange={(e) => {
-                      handleCustomerFormChange(e);
-                      setDropdownOpen(true);
-                      fetchPendingDashboardItems();
-                    }}
-                    onFocus={() => {
-                      setDropdownOpen(true);
-                      fetchPendingDashboardItems();
-                    }}
-                    required={!invoiceForm.customer}
-                    disabled={saving || mode === 'Edit' || !!selectedPendingItemId}
-                    autoComplete="off"
+                    name="bill_number"
+                    className="create-invoice-input fw-bold"
+                    value={invoiceForm.bill_number}
+                    onChange={handleFormChange}
+                    readOnly={mode === 'Add'}
+                    placeholder="1"
+                    disabled={saving}
                   />
-                  {(invoiceForm.customer || selectedPendingItemId) && mode === 'Add' && (
-                    <button
-                      type="button"
-                      className="btn btn-outline-danger"
-                      onClick={handleDeselectPendingItem}
-                      title="Deselect Customer"
-                      disabled={saving}
-                    >
-                      <i className="bi bi-x"></i>
-                    </button>
-                  )}
-                </div>
-
-                {dropdownOpen && (
-                  <ul
-                    className="dropdown-menu show w-100 shadow-lg border border-light-subtle py-1"
-                    style={{
-                      position: 'absolute',
-                      top: '100%',
-                      left: 0,
-                      zIndex: 1050,
-                      display: 'block',
-                      maxHeight: '250px',
-                      overflowY: 'auto'
-                    }}
-                  >
-                    {mode === 'Add' ? (
-                      filteredPendingItems.length === 0 ? (
-                        <li className="px-3 py-2 text-muted small">No pending dashboard bills found</li>
-                      ) : (
-                        filteredPendingItems.map(item => (
-                          <li
-                            key={item.id}
-                            className="d-flex flex-column px-3 py-2 border-bottom border-light-subtle text-black"
-                            style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                            onClick={() => handleSelectPendingItem(item)}
-                          >
-                            <div className="d-flex justify-content-between align-items-center mb-1">
-                              <span className="fw-bold text-dark">{item.customer_name}</span>
-                              <span className="badge bg-warning text-dark small font-monospace" style={{ fontSize: '10px', padding: '3px 8px' }}>
-                                {item.itemsCount} Pending
-                              </span>
-                            </div>
-                            <div className="text-muted small" style={{ fontSize: '11px' }}>
-                              Click to select designs for billing
-                            </div>
-                          </li>
-                        ))
-                      )
-                    ) : (
-                      filteredCustomers.length === 0 ? (
-                        <li className="px-3 py-2 text-muted small">No matching customers found</li>
-                      ) : (
-                        filteredCustomers.map(c => (
-                          <li
-                            key={c.id}
-                            className="d-flex align-items-center justify-content-between px-3 py-1 border-bottom border-light-subtle text-black"
-                            style={{ cursor: 'pointer', transition: 'background-color 0.15s ease-in-out' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          >
-                            <span
-                              className="text-truncate flex-grow-1 py-1 fw-medium"
-                              onClick={() => {
-                                handleCustomerSelectionChange(c.id);
-                                setDropdownOpen(false);
-                              }}
-                            >
-                              {c.name}
-                            </span>
-                            <div className="d-flex gap-1">
-                              <button
-                                className="btn btn-sm btn-outline-primary border-0 p-1"
-                                type="button"
-                                title="Edit Customer Details"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleStartEditCustomer(c);
-                                  setDropdownOpen(false);
-                                }}
-                              >
-                                <i className="bi bi-pencil-square"></i>
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline-danger border-0 p-1"
-                                type="button"
-                                title="Delete Customer"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCustomerToDelete(c);
-                                  setDropdownOpen(false);
-                                }}
-                              >
-                                <i className="bi bi-trash"></i>
-                              </button>
-                            </div>
-                          </li>
-                        ))
-                      )
-                    )}
-                  </ul>
-                )}
-              </div>
-
-              {/* GST Number */}
-              <div className="col-lg-4 col-md-6 col-12">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">GST Number</label>
-                <div className="input-group">
-                  <input
-                    type="text"
-                    name="gst_number"
-                    className="form-control"
-                    placeholder="Enter GSTIN"
-                    value={customerForm.gst_number}
-                    onChange={handleCustomerFormChange}
-                    disabled={saving || mode === 'Add' || (!!invoiceForm.customer && !isEditingCustomer) || isLinkedToDashboard}
-                  />
-                  {mode !== 'Add' && invoiceForm.customer && !isLinkedToDashboard && (
-                    isEditingCustomer ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-success text-white px-2 btn-sm text-truncate"
-                          onClick={handleUpdateCustomer}
-                          disabled={saving || savingCustomer}
-                          title="Update Customer"
-                          style={{ maxWidth: '80px' }}
-                        >
-                          {savingCustomer ? '...' : 'Update'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary text-white px-2 btn-sm text-truncate"
-                          onClick={handleCancelEditCustomer}
-                          disabled={saving || savingCustomer}
-                          title="Cancel"
-                          style={{ maxWidth: '80px' }}
-                        >
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm text-truncate"
-                        onClick={() => setIsEditingCustomer(true)}
-                        disabled={saving}
-                        title="Edit Customer"
-                        style={{ maxWidth: '120px' }}
-                      >
-                        <i className="bi bi-pencil-square me-1"></i> Edit
-                      </button>
-                    )
-                  )}
+                  <span className="badge-auto">AUTO</span>
                 </div>
               </div>
-
-              {/* Bill Number */}
-              <div className="col-lg-2 col-md-6 col-6">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Bill Number</label>
+              <div className="col-6">
+                <label className="create-invoice-label">BILL DATE</label>
                 <input
-                  type="text"
-                  name="bill_number"
-                  className="form-control"
-                  value={invoiceForm.bill_number}
-                  onChange={handleFormChange}
-                  disabled={saving || mode === 'Add'}
-                />
-              </div>
-
-              {/* Bill Date */}
-              <div className="col-lg-2 col-md-6 col-6">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Bill Date</label>
-                <DateInput
+                  type="date"
                   name="bill_date"
-                  className="form-control"
+                  className="create-invoice-input"
                   value={invoiceForm.bill_date}
                   onChange={handleFormChange}
                   required
                   disabled={saving}
                 />
               </div>
+            </div>
 
-              {/* Row 2 */}
-              {/* Billing Address */}
-              <div className="col-lg-6 col-md-12 col-12">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Billing Address</label>
-                <textarea
-                  ref={addressRef}
-                  name="address"
-                  rows="1"
-                  className="form-control"
-                  placeholder="Enter Billing Address"
-                  value={customerForm.address}
-                  onChange={handleCustomerFormChange}
-                  disabled={saving || mode === 'Add' || (!!invoiceForm.customer && !isEditingCustomer) || isLinkedToDashboard}
-                  style={{ resize: 'none', overflowY: 'hidden', minHeight: '38px' }}
-                ></textarea>
-              </div>
-
-              {/* Cha. No */}
-              <div className="col-lg-2 col-md-4 col-4">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Cha. No</label>
+            {/* Customer Name */}
+            <div className="create-invoice-field position-relative customer-dropdown-container">
+              <label className="create-invoice-label">
+                CUSTOMER NAME <span className="required-star">*</span>
+              </label>
+              <div className="create-invoice-input-wrap">
                 <input
                   type="text"
-                  name="challan_no"
-                  className="form-control"
-                  value={invoiceForm.challan_no}
+                  name="name"
+                  className="create-invoice-input"
+                  placeholder="Enter Customer Name"
+                  value={customerForm.name}
+                  onChange={(e) => {
+                    handleCustomerFormChange(e);
+                    setDropdownOpen(true);
+                    fetchPendingDashboardItems();
+                  }}
+                  onFocus={() => {
+                    setDropdownOpen(true);
+                    fetchPendingDashboardItems();
+                  }}
+                  required={!invoiceForm.customer}
+                  disabled={saving || mode === 'Edit' || !!selectedPendingItemId}
+                  autoComplete="off"
+                />
+                {(invoiceForm.customer || selectedPendingItemId) && mode === 'Add' && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-danger position-absolute end-0 me-2"
+                    onClick={handleDeselectPendingItem}
+                    title="Deselect Customer"
+                    disabled={saving}
+                    style={{ zIndex: 5, padding: '2px 6px' }}
+                  >
+                    <i className="bi bi-x"></i>
+                  </button>
+                )}
+              </div>
+
+              {dropdownOpen && (
+                <ul
+                  className="dropdown-menu show w-100 shadow-lg border border-light-subtle py-1"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    zIndex: 1050,
+                    display: 'block',
+                    maxHeight: '250px',
+                    overflowY: 'auto'
+                  }}
+                >
+                  {mode === 'Add' ? (
+                    filteredPendingItems.length === 0 ? (
+                      <li className="px-3 py-2 text-muted small">No pending dashboard bills found</li>
+                    ) : (
+                      filteredPendingItems.map(item => (
+                        <li
+                          key={item.id}
+                          className="d-flex flex-column px-3 py-2 border-bottom border-light-subtle text-black"
+                          style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          onClick={() => handleSelectPendingItem(item)}
+                        >
+                          <div className="d-flex justify-content-between align-items-center">
+                            <span className="fw-bold">{item.customer_name}</span>
+                            <span className="badge bg-primary-subtle text-primary border border-primary-subtle">
+                              CH: {item.p_ch_no || 'N/A'}
+                            </span>
+                          </div>
+                          <div className="d-flex justify-content-between text-muted small mt-1">
+                            <span>Lot: {item.lot_no || 'N/A'}</span>
+                            <span>Amt: ₹{formatAmount(item.amount)}</span>
+                          </div>
+                        </li>
+                      ))
+                    )
+                  ) : (
+                    customers.length === 0 ? (
+                      <li className="px-3 py-2 text-muted small">No customers found</li>
+                    ) : (
+                      customers.map(c => (
+                        <li
+                          key={c.id}
+                          className="px-3 py-2 border-bottom border-light-subtle text-black"
+                          style={{ cursor: 'pointer', transition: 'background-color 0.15s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8f9fa'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          onClick={() => handleSelectCustomer(c)}
+                        >
+                          <div className="fw-bold">{c.name}</div>
+                          {c.gst_number && <div className="text-muted small">GST: {c.gst_number}</div>}
+                        </li>
+                      ))
+                    )
+                  )}
+                </ul>
+              )}
+            </div>
+
+            {/* GST Number */}
+            <div className="create-invoice-field">
+              <label className="create-invoice-label">GST NUMBER</label>
+              <div className="create-invoice-input-wrap">
+                <input
+                  type="text"
+                  name="gst_number"
+                  className="create-invoice-input font-monospace"
+                  placeholder="Enter GSTIN (e.g. 24AAACP1234F1)"
+                  value={customerForm.gst_number}
+                  onChange={handleCustomerFormChange}
+                  disabled={saving || (mode === 'Edit' && isFormFieldsDisabled) || !!selectedPendingItemId}
+                  style={{ textTransform: 'uppercase', paddingRight: '80px' }}
+                />
+                <button
+                  type="button"
+                  className="btn-search-gst"
+                  onClick={handleGstSearch}
+                  disabled={saving || isSearchingGst || (mode === 'Edit' && isFormFieldsDisabled) || !!selectedPendingItemId}
+                >
+                  {isSearchingGst ? 'Searching...' : 'Search'}
+                </button>
+              </div>
+            </div>
+
+            {/* Billing Address */}
+            <div className="create-invoice-field">
+              <label className="create-invoice-label">BILLING ADDRESS</label>
+              <textarea
+                rows="2"
+                name="address"
+                className="create-invoice-input"
+                placeholder="Enter Billing Address"
+                value={customerForm.address}
+                onChange={handleCustomerFormChange}
+                disabled={saving || (mode === 'Edit' && isFormFieldsDisabled) || !!selectedPendingItemId}
+                style={{ resize: 'vertical' }}
+              ></textarea>
+            </div>
+
+            {/* Cha No, HSN Code, Broker */}
+            <div className="row g-2">
+              <div className="col-4">
+                <label className="create-invoice-label">CHA. NO</label>
+                <input
+                  type="text"
+                  name="cha_no"
+                  className="create-invoice-input"
+                  placeholder="Challan"
+                  value={invoiceForm.cha_no}
                   onChange={handleFormChange}
                   disabled={saving}
                 />
               </div>
-
-              {/* HSN Code */}
-              <div className="col-lg-2 col-md-4 col-4">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">HSN Code</label>
+              <div className="col-4">
+                <label className="create-invoice-label">HSN CODE</label>
                 <input
                   type="text"
                   name="hsn_code"
-                  className="form-control"
+                  className="create-invoice-input"
+                  placeholder="5407"
                   value={invoiceForm.hsn_code}
                   onChange={handleFormChange}
-                  disabled={saving || mode === 'Add' || isLinkedToDashboard}
+                  disabled={saving}
                 />
               </div>
-
-              {/* Broker */}
-              <div className="col-lg-2 col-md-4 col-4">
-                <label className="form-label text-uppercase fw-bold invoice-form-label">Broker</label>
+              <div className="col-4">
+                <label className="create-invoice-label">BROKER</label>
                 <input
                   type="text"
                   name="broker"
-                  className="form-control"
+                  className="create-invoice-input"
+                  placeholder="Direct"
                   value={invoiceForm.broker}
                   onChange={handleFormChange}
-                  disabled={saving || mode === 'Add' || isLinkedToDashboard}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="table-responsive mb-0 rounded-3 border">
-            <table className="table table-bordered table-sm align-middle invoice-table mb-0">
-              <thead className="table-dark text-center small text-uppercase">
-                <tr>
-                  <th className="col-nowrap text-center align-middle" style={{ width: '40px' }}>No</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>P.Ch.No</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '90px' }}>Lot No</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '150px' }}>Design</th>
-                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Meter</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Total<br/>Qty</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Plain<br/>Qty</th>
-                  <th className="col-wrap-text text-center align-middle" style={{ minWidth: '70px' }}>Short<br/>Qty</th>
-                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '80px' }}>Qty</th>
-                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '90px' }}>Rate</th>
-                  <th className="col-nowrap text-center align-middle" style={{ minWidth: '120px' }}>Amount</th>
-                  <th className="col-nowrap text-center align-middle" style={{ width: '50px' }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item, index) => {
-                  const calculatedAmount = (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0);
-                  return (
-                    <tr key={index}>
-                      <td className="text-center align-middle row-number col-nowrap">{index + 1}</td>
-                      {renderEditableCell(index, 'p_ch_no', 'text', 'text-center item-pch col-wrap-text')}
-                      {renderEditableCell(index, 'lot_no', 'text', 'text-center item-lot col-wrap-text')}
-                      {renderEditableCell(index, 'design', 'text', 'text-center item-design col-wrap-text')}
-                      {renderEditableCell(index, 'meter', 'number', 'text-center item-meter col-nowrap')}
-                      {renderEditableCell(index, 't_qty', 'number', 'text-center item-tqty col-nowrap')}
-                      {renderEditableCell(index, 'p_qty', 'number', 'text-center item-pqty col-nowrap')}
-                      {renderEditableCell(index, 's_qty', 'number', 'text-center item-sqty col-nowrap')}
-                      {renderEditableCell(index, 'qty', 'number', 'text-center item-qty col-nowrap')}
-                      {renderEditableCell(index, 'rate', 'number', 'text-center item-rate col-nowrap')}
-                      <td className="text-end align-middle item-amount col-nowrap">
-                        {formatAmount(calculatedAmount)}
-                      </td>
-                      <td className="text-center align-middle p-0 col-nowrap">
-                        <button
-                          type="button"
-                          className="btn btn-outline-danger btn-sm border-0 remove-row-btn"
-                          onClick={() => setRowToDelete(index)}
-                          disabled={saving || items.length === 1 || isFormFieldsDisabled || !!item._dashboard_item_id}
-                        >
-                          <i className="bi bi-trash"></i>
-                          <span className="btn-text">Delete</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {/* Row Type Add Button inside Table */}
-                {!isFormFieldsDisabled && (
-                  <tr>
-                    <td colSpan="12" className="text-center p-2 bg-light-subtle">
-                      <button
-                        type="button"
-                        onClick={addRow}
-                        className="btn btn-outline-primary btn-sm rounded-pill mx-auto"
-                        disabled={saving}
-                        style={{ borderStyle: 'dashed', width: '85%' }}
-                      >
-                        <i className="bi bi-plus-lg me-1"></i> Add Row
-                      </button>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              <tfoot className="table-light fw-bold text-end">
-                <tr>
-                  <td colSpan="4" className="text-center col-nowrap">TOTALS</td>
-                  <td id="total-meter" className="col-nowrap">{calculations.totals.total_meter}</td>
-                  <td id="total-tqty" className="col-nowrap">{calculations.totals.total_tqty}</td>
-                  <td id="total-pqty" className="col-nowrap">{calculations.totals.total_pqty}</td>
-                  <td id="total-sqty" className="col-nowrap">{calculations.totals.total_sqty}</td>
-                  <td id="total-qty" className="col-nowrap">{calculations.totals.total_qty}</td>
-                  <td className="col-nowrap"></td>
-                  <td id="total-amount" className="col-nowrap">{formatAmount(calculations.summary.gross_amount)}</td>
-                  <td className="col-nowrap"></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="row g-2 mt-0">
-            {/* Left side: Discount table */}
-            <div className="col-lg-4 col-md-6 col-12 order-lg-1 order-md-1 order-1">
-              <div className="card p-2 border-0 bg-light h-100">
-                <div className="row g-2 mb-2">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Gross Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.gross_amount)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Discount %</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="discount_percent"
-                      className="form-control form-control-sm"
-                      value={invoiceForm.discount_percent}
-                      onChange={handleFormChange}
-                      disabled={saving}
-                    />
-                  </div>
-                </div>
-                <div className="row g-2 mb-2">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Discount Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.discount_amount)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Blouse Charge (<Rupee />)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="blouse_charge"
-                      className="form-control form-control-sm"
-                      value={invoiceForm.blouse_charge}
-                      onChange={handleFormChange}
-                      disabled={saving}
-                    />
-                  </div>
-                </div>
-                <div className="row g-2">
-                  <div className="col-12">
-                    <div className="d-flex justify-content-between align-items-center mb-1">
-                      <label className="form-label fw-bold invoice-form-label mb-0">Sub Total (<Rupee />)</label>
-                      <button
-                        type="button"
-                        className="btn btn-link p-0 text-decoration-none fw-bold text-primary"
-                        style={{ fontSize: '0.75rem', outline: 'none', boxShadow: 'none' }}
-                        onClick={handleOpenExtraChargesModal}
-                        disabled={saving}
-                      >
-                        {invoiceForm.extra_charges && parseFloat(invoiceForm.extra_charges) > 0 ? (
-                          (() => {
-                            let label = `Extra: ${invoiceForm.extra_charges_type === 'cut' ? '-' : '+'}${formatAmount(invoiceForm.extra_charges)}`;
-                            const reasonStr = invoiceForm.extra_charges_reason || '';
-                            if (reasonStr.trim().startsWith('[')) {
-                              try {
-                                const parsed = JSON.parse(reasonStr);
-                                if (Array.isArray(parsed) && parsed.length > 0) {
-                                  if (parsed.length === 1) {
-                                    label += parsed[0].reason ? ` (${parsed[0].reason})` : '';
-                                  } else {
-                                    label += ` (${parsed.length} items)`;
-                                  }
-                                }
-                              } catch (e) {}
-                            } else if (reasonStr) {
-                              label += ` (${reasonStr})`;
-                            }
-                            return <span>{label} (Edit)</span>;
-                          })()
-                        ) : (
-                          "+ Extra Charges"
-                        )}
-                      </button>
-                    </div>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.subtotal)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Middle part: Buttons & Amount in Words */}
-            <div className="col-lg-4 col-md-12 col-12 order-lg-2 order-md-3 order-3 d-flex flex-column justify-content-between">
-              <div className="card p-2 border-0 bg-light flex-grow-1 mb-2">
-                <label className="form-label fw-bold invoice-form-label mb-0">Amount In Words</label>
-                <textarea
-                  className="form-control form-control-sm bg-light text-muted flex-grow-1 mt-1"
-                  value={calculations.summary.amount_in_words}
-                  readOnly
-                  disabled
-                  rows="2"
-                  style={{ resize: 'none' }}
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="d-flex justify-content-center gap-2 mt-auto">
-                {mode === 'Edit' ? (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/invoice-history')}
-                    className="btn btn-light border btn-sm px-3"
-                  >
-                    Back
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleClearForm}
-                    className="btn btn-light border btn-sm px-3"
-                  >
-                    Clear
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-sm px-4"
                   disabled={saving}
-                >
-                  {saving ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-check-circle me-1"></i> Save Invoice
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Right side: Totals table */}
-            <div className="col-lg-4 col-md-6 col-12 order-lg-3 order-md-2 order-2">
-              <div className="card p-2 border-0 bg-light h-100">
-                <div className="row g-2 mb-2">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">SGST %</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="sgst_percent"
-                      className="form-control form-control-sm"
-                      value={invoiceForm.sgst_percent}
-                      onChange={handleFormChange}
-                      disabled={saving}
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">SGST Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.sgst_amount)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                </div>
-                <div className="row g-2 mb-2">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">CGST %</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      name="cgst_percent"
-                      className="form-control form-control-sm"
-                      value={invoiceForm.cgst_percent}
-                      onChange={handleFormChange}
-                      disabled={saving}
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">CGST Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.cgst_amount)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                </div>
-                <div className="row g-2">
-                  <div className="col-6">
-                    <label className="form-label fw-bold invoice-form-label mb-0">Round Off (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-muted text-end"
-                      value={formatAmount(calculations.summary.round_off)}
-                      readOnly
-                      disabled
-                    />
-                  </div>
-                  <div className="col-6">
-                    <label className="form-label text-success mb-0 fw-bold" style={{ fontSize: '16.5px' }}>Grand Amount (<Rupee />)</label>
-                    <input
-                      type="text"
-                      className="form-control form-control-sm bg-light text-success fw-bold text-end"
-                      style={{ fontSize: '1.1rem', color: '#198754' }}
-                      value={`Rs. ${formatAmount(calculations.summary.amount)}`}
-                      readOnly
-                    />
-                  </div>
-                </div>
+                />
               </div>
             </div>
           </div>
+
+          {/* Card 2: TEXTILE LINE ITEMS */}
+          <div className="create-invoice-card">
+            <div className="create-invoice-card-header">
+              <div className="create-invoice-card-header-left">
+                <div className="create-invoice-card-icon blue">
+                  <i className="bi bi-stack"></i>
+                </div>
+                <h2 className="create-invoice-card-title">TEXTILE LINE ITEMS ({items.length})</h2>
+              </div>
+              <button 
+                type="button" 
+                className="create-invoice-action-link"
+                onClick={addRow}
+                disabled={saving || isFormFieldsDisabled}
+              >
+                + Add Item
+              </button>
+            </div>
+
+            {/* Line Items List */}
+            {items.map((item, index) => {
+              const calculatedAmount = (parseFloat(item.qty) || 0) * (parseFloat(item.rate) || 0);
+              return (
+                <div key={index} className="create-invoice-item-box">
+                  <div className="create-invoice-item-box-header">
+                    <div className="d-flex align-items-center">
+                      <span className="create-invoice-item-num-badge">{index + 1}</span>
+                      <h3 className="create-invoice-item-box-title">Item Specifications</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className="create-invoice-item-delete-btn"
+                      onClick={() => setRowToDelete(index)}
+                      disabled={saving || items.length === 1 || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      title="Delete Item"
+                    >
+                      <i className="bi bi-trash3"></i>
+                    </button>
+                  </div>
+
+                  {/* Row 1: P.CH.NO, LOT NO, DESIGN */}
+                  <div className="row g-2 mb-2">
+                    <div className="col-4">
+                      <label className="create-invoice-label">P.CH.NO</label>
+                      <input
+                        type="text"
+                        className="create-invoice-input"
+                        placeholder="Ch. No"
+                        value={item.p_ch_no}
+                        onChange={(e) => handleItemChange(index, 'p_ch_no', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="col-4">
+                      <label className="create-invoice-label">LOT NO</label>
+                      <input
+                        type="text"
+                        className="create-invoice-input"
+                        placeholder="Lot #"
+                        value={item.lot_no}
+                        onChange={(e) => handleItemChange(index, 'lot_no', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="col-4">
+                      <label className="create-invoice-label">DESIGN</label>
+                      <input
+                        type="text"
+                        className="create-invoice-input"
+                        placeholder="Design Name"
+                        value={item.design}
+                        onChange={(e) => handleItemChange(index, 'design', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 2: METER, TOT QTY, PLAIN, SHORT */}
+                  <div className="row g-2 mb-2">
+                    <div className="col-3">
+                      <label className="create-invoice-label">METER</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="create-invoice-input text-center"
+                        placeholder="0.00"
+                        value={item.meter}
+                        onChange={(e) => handleItemChange(index, 'meter', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="col-3">
+                      <label className="create-invoice-label">TOT QTY</label>
+                      <input
+                        type="number"
+                        step="1"
+                        className="create-invoice-input text-center"
+                        placeholder="0"
+                        value={item.t_qty}
+                        onChange={(e) => handleItemChange(index, 't_qty', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="col-3">
+                      <label className="create-invoice-label">PLAIN</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="create-invoice-input text-center"
+                        placeholder="0.00"
+                        value={item.p_qty}
+                        onChange={(e) => handleItemChange(index, 'p_qty', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="col-3">
+                      <label className="create-invoice-label">SHORT</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="create-invoice-input text-center"
+                        placeholder="0.00"
+                        value={item.s_qty}
+                        onChange={(e) => handleItemChange(index, 's_qty', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: Calculation Box (QTY, RATE, AMOUNT) */}
+                  <div className="create-invoice-calc-box">
+                    <div className="create-invoice-calc-col">
+                      <label className="create-invoice-label">QTY (PCS/M)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="create-invoice-calc-input"
+                        placeholder="0.00"
+                        value={item.qty}
+                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="create-invoice-calc-col">
+                      <label className="create-invoice-label">RATE (₹)</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="create-invoice-calc-input"
+                        placeholder="0.00"
+                        value={item.rate}
+                        onChange={(e) => handleItemChange(index, 'rate', e.target.value)}
+                        disabled={saving || isFormFieldsDisabled || !!item._dashboard_item_id}
+                      />
+                    </div>
+                    <div className="create-invoice-calc-col">
+                      <label className="create-invoice-label">AMOUNT (₹)</label>
+                      <div className="create-invoice-calc-amount">
+                        {formatAmount(calculatedAmount)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* TOTALS BAR */}
+            <div className="create-invoice-totals-bar">
+              <div className="create-invoice-totals-bar-row">
+                <span className="create-invoice-totals-title">TOTALS BAR</span>
+                <span className="create-invoice-totals-mono">
+                  Meter: {calculations.totals.total_meter} | Tot: {calculations.totals.total_tqty}
+                </span>
+              </div>
+              <div className="create-invoice-totals-bar-row">
+                <span className="create-invoice-totals-mono">
+                  Plain: {calculations.totals.total_pqty} | Short: {calculations.totals.total_sqty}
+                </span>
+                <span className="create-invoice-totals-mono">
+                  Qty: <span className="text-white">{calculations.totals.total_qty}</span> Amt: <span className="create-invoice-totals-highlight">₹ {formatAmount(calculations.summary.gross_amount)}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: TAXES & AMOUNT SUMMARY */}
+          <div className="create-invoice-card">
+            <div className="create-invoice-card-header">
+              <div className="create-invoice-card-header-left">
+                <div className="create-invoice-card-icon green">
+                  <i className="bi bi-currency-rupee"></i>
+                </div>
+                <h2 className="create-invoice-card-title">TAXES & AMOUNT SUMMARY</h2>
+              </div>
+              <button 
+                type="button" 
+                className="create-invoice-action-link"
+                onClick={handleOpenExtraChargesModal}
+                disabled={saving}
+              >
+                + Extra Charges
+              </button>
+            </div>
+
+            {/* Gross Amount */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label">Gross Amount (₹)</span>
+              <div className="create-invoice-summary-val-box">
+                {formatAmount(calculations.summary.gross_amount)}
+              </div>
+            </div>
+
+            {/* Discount % & Discount Amount */}
+            <div className="row g-2 mb-2">
+              <div className="col-6">
+                <label className="create-invoice-label">DISCOUNT %</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="discount_percent"
+                  className="create-invoice-input text-end"
+                  value={invoiceForm.discount_percent}
+                  onChange={handleFormChange}
+                  disabled={saving}
+                />
+              </div>
+              <div className="col-6">
+                <label className="create-invoice-label">DISCOUNT AMT (₹)</label>
+                <div className="create-invoice-input text-end bg-light text-muted">
+                  {formatAmount(calculations.summary.discount_amount)}
+                </div>
+              </div>
+            </div>
+
+            {/* Blouse Charge */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label">Blouse Charge (₹)</span>
+              <input
+                type="number"
+                step="0.01"
+                name="blouse_charge"
+                className="create-invoice-summary-input"
+                value={invoiceForm.blouse_charge}
+                onChange={handleFormChange}
+                disabled={saving}
+              />
+            </div>
+
+            {/* Sub Total */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label fw-bold">Sub Total (₹)</span>
+              <div className="create-invoice-summary-val-box fw-bold">
+                {formatAmount(calculations.summary.subtotal)}
+              </div>
+            </div>
+
+            {/* SGST */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label">
+                SGST <span className="create-invoice-percent-badge">{invoiceForm.sgst_percent}%</span>
+              </span>
+              <div className="create-invoice-summary-val-box">
+                {formatAmount(calculations.summary.sgst_amount)}
+              </div>
+            </div>
+
+            {/* CGST */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label">
+                CGST <span className="create-invoice-percent-badge">{invoiceForm.cgst_percent}%</span>
+              </span>
+              <div className="create-invoice-summary-val-box">
+                {formatAmount(calculations.summary.cgst_amount)}
+              </div>
+            </div>
+
+            {/* Round Off */}
+            <div className="create-invoice-summary-row">
+              <span className="create-invoice-summary-label">Round Off (₹)</span>
+              <div className="create-invoice-summary-val-box">
+                {formatAmount(calculations.summary.round_off)}
+              </div>
+            </div>
+
+            {/* Amount In Words */}
+            <label className="create-invoice-label mt-2">AMOUNT IN WORDS</label>
+            <div className="create-invoice-words-box">
+              "{calculations.summary.amount_in_words || 'Zero Rupees Only'}"
+            </div>
+
+            {/* Grand Amount Box */}
+            <div className="create-invoice-grand-box">
+              <div className="create-invoice-grand-left">
+                <h3 className="create-invoice-grand-title">GRAND AMOUNT (₹)</h3>
+                <p className="create-invoice-grand-sub">Includes all taxes</p>
+              </div>
+              <p className="create-invoice-grand-amount">
+                Rs. {formatAmount(calculations.summary.amount)}
+              </p>
+            </div>
+          </div>
+
+          {/* Bottom Actions: Clear & Save Invoice */}
+          <div className="create-invoice-actions">
+            {mode === 'Edit' ? (
+              <button
+                type="button"
+                className="create-invoice-btn-clear"
+                onClick={() => navigate('/invoice-history')}
+              >
+                Back
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="create-invoice-btn-clear"
+                onClick={handleClearForm}
+                disabled={saving}
+              >
+                Clear
+              </button>
+            )}
+            <button
+              type="submit"
+              className="create-invoice-btn-save"
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2"></span>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-check-circle-fill"></i> Save Invoice
+                </>
+              )}
+            </button>
+          </div>
+            </>
+          )}
         </form>
+
+        {/* Bottom Navigation */}
+        <nav className="app-home-bottom-nav">
+          <button 
+            type="button" 
+            className="app-home-bottom-tab"
+            onClick={() => navigate('/')}
+            title="Home"
+          >
+            <i className="bi bi-house-door-fill"></i>
+            <span>Home</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="app-home-bottom-tab"
+            onClick={() => navigate('/dashboard')}
+            title="Dashboard"
+          >
+            <i className="bi bi-grid-fill"></i>
+            <span>Dashboard</span>
+          </button>
+          
+          <button 
+            type="button" 
+            className="app-home-bottom-tab active"
+            onClick={() => {}}
+            title="Invoices"
+          >
+            <i className="bi bi-receipt"></i>
+            <span>Invoices</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="app-home-bottom-tab"
+            onClick={() => navigate('/invoice-history')}
+            title="History"
+          >
+            <i className="bi bi-clock-history"></i>
+            <span>History</span>
+          </button>
+        </nav>
       </div>
 
-      {/* Modal overlay popup for Extra Charges / Cuts */}
+{/* Bottom sheet for Extra Charges / Cuts */}
       {showExtraChargesModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg" style={{ borderRadius: '12px' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold text-primary d-flex align-items-center">
-                  <i className="bi bi-plus-slash-minus me-2"></i> Extra Charges / Cuts
-                </h5>
-                <button 
-                  type="button" 
-                  className="btn-close" 
-                  onClick={() => setShowExtraChargesModal(false)} 
-                  aria-label="Close"
-                ></button>
+        <div
+          className={`dashboard-add-modal-backdrop ${extraChargesClosing ? 'closing' : ''}`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) handleCloseExtraChargesModal();
+          }}
+        >
+          <div className={`dashboard-add-modal-container ${extraChargesClosing ? 'closing' : ''}`}>
+            
+            {/* Bottom sheet drag handle indicator */}
+            <div className="dashboard-bottom-sheet-handle-row">
+              <div className="dashboard-bottom-sheet-handle"></div>
+            </div>
+
+            {/* Modal Header */}
+            <div className="dashboard-add-modal-header">
+              <div className="dashboard-add-modal-title-box">
+                <div className="dashboard-add-modal-icon-badge">
+                  <i className="bi bi-plus-slash-minus"></i>
+                </div>
+                <h5 className="dashboard-add-modal-title">Extra Charges / Cuts</h5>
               </div>
-              <div className="modal-body py-3">
-                {/* 1. List of Added Charges */}
-                <div className="mb-3">
-                  <label className="form-label fw-bold small mb-2 text-secondary">Added Charges / Cuts ({extraChargesList.length})</label>
-                  {extraChargesList.length === 0 ? (
-                    <div className="text-muted text-center py-2 bg-light rounded" style={{ fontSize: '0.85rem', border: '1px dashed #cbd5e1' }}>
-                      No extra charges or cuts added yet.
-                    </div>
-                  ) : (
-                    <div className="border rounded charges-scroll-container" style={{ height: '110px', overflowY: 'auto' }}>
-                      <table className="table table-sm table-borderless mb-0" style={{ fontSize: '0.9rem' }}>
-                        <thead className="table-light border-bottom" style={{ fontSize: '0.8rem', position: 'sticky', top: 0, zIndex: 1 }}>
-                          <tr>
-                            <th className="px-2 py-1">Type</th>
-                            <th className="px-2 py-1 text-end">Amount</th>
-                            <th className="px-2 py-1">Reason</th>
-                            <th className="px-2 py-1 text-center" style={{ width: '40px' }}>Action</th>
+              <button
+                type="button"
+                className="dashboard-add-modal-close-btn"
+                onClick={handleCloseExtraChargesModal}
+                title="Close"
+              >
+                <i className="bi bi-x-lg" style={{ fontSize: '14px' }}></i>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="dashboard-add-modal-body">
+              {/* 1. List of Added Charges */}
+              <div className="mb-2">
+                <div className="dashboard-modal-products-header mb-2">
+                  <span className="dashboard-modal-products-title">Added Charges / Cuts</span>
+                  <span className="dashboard-modal-products-badge">
+                    {extraChargesList.length} {extraChargesList.length === 1 ? 'Item' : 'Items'}
+                  </span>
+                </div>
+                {extraChargesList.length === 0 ? (
+                  <div className="text-muted text-center py-3 bg-light rounded-3" style={{ fontSize: '0.85rem', border: '1.5px dashed #cbd5e1' }}>
+                    No extra charges or cuts added yet.
+                  </div>
+                ) : (
+                  <div className="border rounded-3 charges-scroll-container" style={{ maxHeight: '130px', overflowY: 'auto' }}>
+                    <table className="table table-sm table-borderless mb-0" style={{ fontSize: '0.9rem' }}>
+                      <thead className="table-light border-bottom" style={{ fontSize: '0.8rem', position: 'sticky', top: 0, zIndex: 1 }}>
+                        <tr>
+                          <th className="px-2 py-1">Type</th>
+                          <th className="px-2 py-1 text-end">Amount</th>
+                          <th className="px-2 py-1">Reason</th>
+                          <th className="px-2 py-1 text-center" style={{ width: '40px' }}>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {extraChargesList.map((item, idx) => (
+                          <tr key={idx} className="border-bottom align-middle">
+                            <td className="px-2 py-1">
+                              <span className={`badge ${item.type === 'add' ? 'bg-success text-white' : 'bg-danger text-white'} rounded-pill`} style={{ fontSize: '0.75rem', padding: '3px 8px' }}>
+                                {item.type === 'add' ? '+ Add' : '- Cut'}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1 text-end fw-bold">₹ {formatAmount(item.amount)}</td>
+                            <td className="px-2 py-1 text-truncate" style={{ maxWidth: '120px' }} title={item.reason}>
+                              {item.reason || '-'}
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                className="btn btn-link btn-sm text-danger p-0 border-0"
+                                onClick={() => handleRemoveChargeFromList(idx)}
+                              >
+                                <i className="bi bi-trash-fill"></i>
+                              </button>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {extraChargesList.map((item, idx) => (
-                            <tr key={idx} className="border-bottom align-middle">
-                              <td className="px-2 py-1">
-                                <span className={`badge ${item.type === 'add' ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'} rounded-pill`} style={{ fontSize: '0.75rem' }}>
-                                  {item.type === 'add' ? 'Add' : 'Cut'}
-                                </span>
-                              </td>
-                              <td className="px-2 py-1 text-end fw-bold">₹ {formatAmount(item.amount)}</td>
-                              <td className="px-2 py-1 text-truncate" style={{ maxWidth: '120px' }} title={item.reason}>
-                                {item.reason || '-'}
-                              </td>
-                              <td className="px-2 py-1 text-center">
-                                <button
-                                  type="button"
-                                  className="btn btn-link btn-sm text-danger p-0 border-0"
-                                  onClick={() => handleRemoveChargeFromList(idx)}
-                                >
-                                  <i className="bi bi-trash-fill"></i>
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-
-                <hr className="my-3" />
-
-                {/* 2. Form to Add New Charge */}
-                <div className="mt-2">
-                  <div className="fw-bold small mb-2 text-primary" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
-                  
-                  <div className="mb-2.5">
-                    <label className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Type</label>
-                    <div className="d-flex gap-2">
-                      <button
-                        type="button"
-                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'add' ? 'btn-primary' : 'btn-outline-primary'}`}
-                        onClick={() => handleSelectExtraChargesType('add')}
-                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
-                      >
-                        <i className="bi bi-plus-circle me-1"></i> Add
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'cut' ? 'btn-danger' : 'btn-outline-danger'}`}
-                        onClick={() => handleSelectExtraChargesType('cut')}
-                        style={{ height: '32px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem' }}
-                      >
-                        <i className="bi bi-dash-circle me-1"></i> Cut
-                      </button>
-                    </div>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-
-                  <div className="mb-2.5">
-                    <label htmlFor="extra-charges-amount" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Amount (₹)</label>
-                    <input
-                      ref={amountInputRef}
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      id="extra-charges-amount"
-                      className="form-control form-control-sm"
-                      style={{ fontSize: '0.85rem' }}
-                      placeholder="0.00"
-                      value={extraChargesInput.amount}
-                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, amount: e.target.value }))}
-                      disabled={!extraChargesInput.type}
-                      autoFocus={!!extraChargesInput.type}
-                      onFocus={(e) => e.target.select()}
-                    />
-                  </div>
-
-                  <div className="mb-2">
-                    <label htmlFor="extra-charges-reason" className="form-label fw-bold small mb-1" style={{ fontSize: '0.8rem' }}>Reason</label>
-                    <input
-                      type="text"
-                      id="extra-charges-reason"
-                      className="form-control form-control-sm"
-                      style={{ fontSize: '0.85rem' }}
-                      placeholder="e.g. Transport, Special Discount"
-                      value={extraChargesInput.reason}
-                      onChange={(e) => setExtraChargesInput(prev => ({ ...prev, reason: e.target.value }))}
-                      disabled={!extraChargesInput.type}
-                    />
-                  </div>
-
-                  <button
-                    type="button"
-                    className="btn btn-outline-primary btn-sm w-100 mt-2 d-flex align-items-center justify-content-center gap-1 fw-bold"
-                    style={{ height: '32px', fontSize: '0.8rem' }}
-                    onClick={handleAddChargeToList}
-                    disabled={!extraChargesInput.type}
-                  >
-                    <i className="bi bi-plus-lg"></i> Add to List
-                  </button>
-                </div>
+                )}
               </div>
-              <div className="modal-footer border-0 pt-0 d-flex justify-content-between">
+
+              {/* 2. Form to Add New Charge */}
+              <div className="bg-light p-3 rounded-3 border mt-1">
+                <div className="fw-bold small mb-2 text-dark" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
+                
+                <div className="mb-2">
+                  <label className="dashboard-modal-label mb-1">Type</label>
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'add' ? 'btn-primary' : 'btn-outline-primary'}`}
+                      onClick={() => handleSelectExtraChargesType('add')}
+                      style={{ height: '36px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600 }}
+                    >
+                      <i className="bi bi-plus-circle me-1"></i> Add
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn btn-sm flex-grow-1 ${extraChargesInput.type === 'cut' ? 'btn-danger' : 'btn-outline-danger'}`}
+                      onClick={() => handleSelectExtraChargesType('cut')}
+                      style={{ height: '36px', borderRadius: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.85rem', fontWeight: 600 }}
+                    >
+                      <i className="bi bi-dash-circle me-1"></i> Cut
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label htmlFor="extra-charges-amount" className="dashboard-modal-label mb-1">Amount (₹)</label>
+                  <input
+                    ref={amountInputRef}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    id="extra-charges-amount"
+                    className="dashboard-modal-input"
+                    placeholder="0.00"
+                    value={extraChargesInput.amount}
+                    onChange={(e) => setExtraChargesInput(prev => ({ ...prev, amount: e.target.value }))}
+                    disabled={!extraChargesInput.type}
+                    autoFocus={!!extraChargesInput.type}
+                    onFocus={(e) => e.target.select()}
+                  />
+                </div>
+
+                <div className="mb-2">
+                  <label htmlFor="extra-charges-reason" className="dashboard-modal-label mb-1">Reason</label>
+                  <input
+                    type="text"
+                    id="extra-charges-reason"
+                    className="dashboard-modal-input"
+                    placeholder="e.g. Transport, Special Discount"
+                    value={extraChargesInput.reason}
+                    onChange={(e) => setExtraChargesInput(prev => ({ ...prev, reason: e.target.value }))}
+                    disabled={!extraChargesInput.type}
+                  />
+                </div>
+
                 <button
                   type="button"
-                  onClick={handleClearExtraCharges}
-                  className="btn btn-outline-secondary btn-sm px-3"
+                  className="dashboard-modal-add-product-btn mt-2"
+                  onClick={handleAddChargeToList}
+                  disabled={!extraChargesInput.type}
                 >
-                  Clear All
+                  <i className="bi bi-plus-lg"></i> Add to List
                 </button>
-                <div className="d-flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowExtraChargesModal(false)}
-                    className="btn btn-light border btn-sm px-3"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyExtraCharges}
-                    className="btn btn-primary btn-sm px-3"
-                  >
-                    Apply
-                  </button>
-                </div>
               </div>
             </div>
+
+            {/* Modal Footer */}
+            <div className="dashboard-add-modal-footer d-flex justify-content-between">
+              <button
+                type="button"
+                onClick={handleClearExtraCharges}
+                className="btn btn-outline-secondary btn-sm px-3"
+                style={{ borderRadius: '10px' }}
+              >
+                Clear All
+              </button>
+              <div className="d-flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleCloseExtraChargesModal}
+                  className="dashboard-modal-cancel-btn py-2 px-3"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyExtraCharges}
+                  className="dashboard-modal-submit-btn py-2 px-3"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}
 
       {/* Modal overlay popup for Duplicate Bill Number */}
       {showDuplicateModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-warning fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-warning"></i> Duplicate Bill Number
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowDuplicateModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowDuplicateModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon amber">
+                <i className="bi bi-exclamation-triangle-fill"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0">
-                  The bill number <strong>"{invoiceForm.bill_number}"</strong> already exists in the system. Please enter a different, unique bill number to save this invoice.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowDuplicateModal(false)}
-                  className="btn btn-warning text-white btn-sm px-4"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowDuplicateModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Duplicate Bill Number</h3>
+            <p className="app-modern-modal-desc">
+              The bill number already exists in the system. Please enter a different, unique bill number to save this invoice.
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Bill Number</span>
+              <strong className="text-danger font-monospace" style={{ fontSize: '14px' }}>
+                {invoiceForm.bill_number}
+              </strong>
+            </div>
+            <div className="app-modern-modal-actions-col">
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={() => setShowDuplicateModal(false)}
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
@@ -2572,39 +2690,43 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Confirm Clear Form */}
       {showClearConfirmModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Clear Invoice Form
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowClearConfirmModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowClearConfirmModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon red">
+                <i className="bi bi-arrow-counterclockwise"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0">
-                  Are you sure you want to clear all form fields? This will discard all of your current inputs and restore the defaults.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowClearConfirmModal(false)}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    executeClearForm();
-                    setShowClearConfirmModal(false);
-                  }}
-                  className="btn btn-danger btn-sm px-3"
-                >
-                  Clear Form
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowClearConfirmModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Clear Invoice Form</h3>
+            <p className="app-modern-modal-desc">
+              Are you sure you want to clear all form fields? This will discard all your current entries and reset the form.
+            </p>
+            <div className="app-modern-modal-actions-row">
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={() => setShowClearConfirmModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-danger"
+                onClick={() => {
+                  executeClearForm();
+                  setShowClearConfirmModal(false);
+                }}
+              >
+                Clear Form
+              </button>
             </div>
           </div>
         </div>
@@ -2612,36 +2734,49 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Confirm Delete Row */}
       {rowToDelete !== null && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Delete Row
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setRowToDelete(null)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setRowToDelete(null)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon red">
+                <i className="bi bi-trash3"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0">
-                  Are you sure you want to delete row #{rowToDelete + 1}? This will discard all of its inputs.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setRowToDelete(null)}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmDeleteRow}
-                  className="btn btn-danger btn-sm px-3"
-                >
-                  Delete
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setRowToDelete(null)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Delete Product Row</h3>
+            <p className="app-modern-modal-desc">
+              Are you sure you want to delete row #{rowToDelete + 1}? This item will be removed from this invoice.
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Row Number</span>
+              <strong className="text-dark" style={{ fontSize: '13.5px' }}>#{rowToDelete + 1}</strong>
+              {products[rowToDelete]?.design && (
+                <span className="fw-semibold text-primary" style={{ fontSize: '13px' }}>
+                  {products[rowToDelete].design}
+                </span>
+              )}
+            </div>
+            <div className="app-modern-modal-actions-row">
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={() => setRowToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-danger"
+                onClick={confirmDeleteRow}
+              >
+                Delete Row
+              </button>
             </div>
           </div>
         </div>
@@ -2649,36 +2784,44 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Confirm Delete Customer */}
       {customerToDelete !== null && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Delete Customer
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setCustomerToDelete(null)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setCustomerToDelete(null)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon red">
+                <i className="bi bi-trash3"></i>
               </div>
-              <div className="modal-body py-3 text-start">
-                <p className="mb-0 text-black">
-                  Are you sure you want to delete customer <strong>{customerToDelete.name}</strong>? This will remove them from the list, but will not delete their past invoices.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setCustomerToDelete(null)}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteCustomer}
-                  className="btn btn-danger btn-sm px-3"
-                >
-                  Delete
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setCustomerToDelete(null)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Delete Customer</h3>
+            <p className="app-modern-modal-desc">
+              Are you sure you want to delete this customer? They will be removed from suggestions, but previous invoices remain safe.
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Customer</span>
+              <strong className="text-dark" style={{ fontSize: '13.5px' }}>{customerToDelete.name}</strong>
+            </div>
+            <div className="app-modern-modal-actions-row">
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={() => setCustomerToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-danger"
+                onClick={handleDeleteCustomer}
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
@@ -2686,32 +2829,37 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Plan Expiry */}
       {showExpiryModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Plan Expired
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowExpiryModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowExpiryModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon amber">
+                <i className="bi bi-shield-exclamation"></i>
               </div>
-              <div className="modal-body py-3 text-center">
-                <p className="mb-0 fs-5">
-                  Your plan has expired.
-                </p>
-                <p className="mt-2 text-muted">
-                  Expiry Date: <strong>{formatDateDDMMYYYY(planExpiryDate)}</strong>
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowExpiryModal(false)}
-                  className="btn btn-danger btn-sm px-4"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowExpiryModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">License Expired!</h3>
+            <p className="app-modern-modal-desc">
+              Your software license has expired or the invoice date exceeds your plan period. Please activate a new license.
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Expiry Date</span>
+              <strong className="text-dark" style={{ fontSize: '13.5px' }}>{formatDateDDMMYYYY(planExpiryDate)}</strong>
+            </div>
+            <div className="app-modern-modal-actions-col">
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={() => setShowExpiryModal(false)}
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
@@ -2719,29 +2867,37 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Date Error */}
       {showDateErrorModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Invalid Bill Date
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowDateErrorModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowDateErrorModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon amber">
+                <i className="bi bi-calendar-x"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0 text-black">
-                  Bill Date cannot be earlier than Dashboard Billing Date (<strong>{formatDateDDMMYYYY(dashboardItemDate)}</strong>).
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowDateErrorModal(false)}
-                  className="btn btn-danger btn-sm px-4"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowDateErrorModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Invalid Bill Date</h3>
+            <p className="app-modern-modal-desc">
+              Bill Date cannot be earlier than the Dashboard Billing Date.
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>Dashboard Date</span>
+              <strong className="text-dark" style={{ fontSize: '13.5px' }}>{formatDateDDMMYYYY(dashboardItemDate)}</strong>
+            </div>
+            <div className="app-modern-modal-actions-col">
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={() => setShowDateErrorModal(false)}
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
@@ -2749,29 +2905,33 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Different Broker Alert */}
       {showDifferentBrokerModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Different Broker Detected
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowDifferentBrokerModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowDifferentBrokerModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon amber">
+                <i className="bi bi-person-exclamation"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0 text-black">
-                  You cannot select items with different broker names. Please select items belonging to the same broker.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowDifferentBrokerModal(false)}
-                  className="btn btn-danger btn-sm px-4"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowDifferentBrokerModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Different Broker</h3>
+            <p className="app-modern-modal-desc">
+              You cannot combine items with different broker names into the same invoice. Please select items belonging to the same broker.
+            </p>
+            <div className="app-modern-modal-actions-col">
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={() => setShowDifferentBrokerModal(false)}
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
@@ -2779,29 +2939,33 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Different HSN Alert */}
       {showDifferentHsnModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Different HSN Codes Detected
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowDifferentHsnModal(false)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setShowDifferentHsnModal(false)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon amber">
+                <i className="bi bi-tags-fill"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0 text-black">
-                  You cannot select items with different HSN codes. Please select items belonging to the same HSN code.
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowDifferentHsnModal(false)}
-                  className="btn btn-danger btn-sm px-4"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setShowDifferentHsnModal(false)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Different HSN Code</h3>
+            <p className="app-modern-modal-desc">
+              You cannot select items with different HSN codes. Please select items belonging to the same HSN code.
+            </p>
+            <div className="app-modern-modal-actions-col">
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={() => setShowDifferentHsnModal(false)}
+              >
+                Understood
+              </button>
             </div>
           </div>
         </div>
@@ -2809,86 +2973,108 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Selecting Pending Designs */}
       {showDesignsModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-xl modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start">
-              <div className="modal-header bg-primary text-white py-3">
-                <h5 className="modal-title fw-bold d-flex align-items-center">
-                  <i className="bi bi-grid-3x3-gap-fill me-2"></i> Select Pending Designs for Bill
-                </h5>
-                <button type="button" className="btn-close btn-close-white" onClick={handleCancelDesignsModal} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={handleCancelDesignsModal}>
+          <div className="app-modern-modal-card extra-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header" style={{ marginBottom: '12px' }}>
+              <div className="d-flex align-items-center gap-3">
+                <div className="app-modern-modal-icon blue">
+                  <i className="bi bi-grid-3x3-gap-fill"></i>
+                </div>
+                <div>
+                  <h3 className="app-modern-modal-title" style={{ fontSize: '18px', margin: 0 }}>
+                    Select Pending Designs
+                  </h3>
+                  <span className="text-muted small">
+                    Pick items from dashboard to include in this invoice
+                  </span>
+                </div>
               </div>
-              <div className="modal-body p-4" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                <p className="text-muted small mb-3">
-                  Check the designs/items from the dashboard you want to include in this invoice.
-                </p>
-                <div className="table-responsive">
-                  <table className="table table-hover align-middle mb-0 text-center">
-                    <thead className="table-light text-uppercase font-monospace" style={{ fontSize: '12px' }}>
-                      <tr>
-                        <th width="40" className="text-center">
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={handleCancelDesignsModal}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <div className="app-modern-modal-body-scroll my-2" style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden' }}>
+              <div className="table-responsive" style={{ maxHeight: '50vh' }}>
+                <table className="table table-hover align-middle mb-0 text-center">
+                  <thead className="table-light text-uppercase font-monospace" style={{ fontSize: '12px', position: 'sticky', top: 0, zIndex: 2 }}>
+                    <tr>
+                      <th width="40" className="text-center">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={modalProducts.length > 0 && modalProducts.every(p => p.checked)}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setModalProducts(prev => prev.map(p => ({ ...p, checked: val })));
+                          }}
+                        />
+                      </th>
+                      <th className="text-center">Date</th>
+                      <th className="text-center">P.Ch.No</th>
+                      <th className="text-center">Design</th>
+                      <th className="text-center">Lot No</th>
+                      <th className="text-center">Broker</th>
+                      <th className="text-center">Qty</th>
+                      <th className="text-center">Rate</th>
+                      <th className="text-center">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modalProducts.map((prod, idx) => (
+                      <tr
+                        key={prod.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => {
+                          setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: !p.checked } : p));
+                        }}
+                      >
+                        <td className="text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             className="form-check-input"
-                            checked={modalProducts.length > 0 && modalProducts.every(p => p.checked)}
+                            checked={prod.checked}
                             onChange={(e) => {
                               const val = e.target.checked;
-                              setModalProducts(prev => prev.map(p => ({ ...p, checked: val })));
+                              setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: val } : p));
                             }}
                           />
-                        </th>
-                        <th className="text-center">Date</th>
-                        <th className="text-center">P.Ch.No</th>
-                        <th className="text-center">Design</th>
-                        <th className="text-center">Lot No</th>
-                        <th className="text-center">Broker</th>
-                        <th className="text-center">Qty</th>
-                        <th className="text-center">Rate</th>
-                        <th className="text-center">Total</th>
+                        </td>
+                        <td className="small text-center">{formatDateDDMMYYYY(prod.date)}</td>
+                        <td className="small font-monospace text-center">{prod.pChNo || '-'}</td>
+                        <td className="fw-bold text-center">{prod.design}</td>
+                        <td className="small font-monospace text-center">{prod.lotNo || '-'}</td>
+                        <td className="small text-center">{prod.broker || '-'}</td>
+                        <td className="text-center small">{prod.qty}</td>
+                        <td className="text-center small">₹{prod.rate.toFixed(2)}</td>
+                        <td className="text-center fw-semibold text-primary">₹{(prod.qty * prod.rate).toFixed(2)}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {modalProducts.map((prod, idx) => (
-                        <tr
-                          key={prod.id}
-                          style={{ cursor: 'pointer' }}
-                          onClick={() => {
-                            setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: !p.checked } : p));
-                          }}
-                        >
-                          <td className="text-center" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              className="form-check-input"
-                              checked={prod.checked}
-                              onChange={(e) => {
-                                const val = e.target.checked;
-                                setModalProducts(prev => prev.map((p, pIdx) => pIdx === idx ? { ...p, checked: val } : p));
-                              }}
-                            />
-                          </td>
-                          <td className="small text-center">{formatDateDDMMYYYY(prod.date)}</td>
-                          <td className="small font-monospace text-center">{prod.pChNo || '-'}</td>
-                          <td className="fw-bold text-center">{prod.design}</td>
-                          <td className="small font-monospace text-center">{prod.lotNo || '-'}</td>
-                          <td className="small text-center">{prod.broker || '-'}</td>
-                          <td className="text-center small">{prod.qty}</td>
-                          <td className="text-center small">₹{prod.rate.toFixed(2)}</td>
-                          <td className="text-center fw-semibold">₹{(prod.qty * prod.rate).toFixed(2)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              <div className="modal-footer bg-light py-3 d-flex justify-content-between">
-                <button type="button" className="btn btn-light border btn-sm px-3" onClick={handleCancelDesignsModal}>
-                  Cancel
-                </button>
-                <button type="button" className="btn btn-primary btn-sm px-4 fw-semibold" onClick={handleConfirmSelectedDesigns}>
-                  Add to Bill ({modalProducts.filter(p => p.checked).length})
-                </button>
-              </div>
+            </div>
+
+            <div className="app-modern-modal-actions-row">
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={handleCancelDesignsModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={handleConfirmSelectedDesigns}
+              >
+                Add to Bill ({modalProducts.filter(p => p.checked).length})
+              </button>
             </div>
           </div>
         </div>
@@ -2896,93 +3082,118 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
       {/* Modal overlay popup for Live PDF Invoice Preview */}
       {previewInvoiceId && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-xl modal-dialog-centered" style={{ maxWidth: '90%', height: '90vh' }}>
-            <div className="modal-content h-100 border-0 shadow-lg d-flex flex-column">
-              <div className="modal-header bg-dark text-white border-0 py-2">
-                <h5 className="modal-title fw-bold d-flex align-items-center small text-uppercase font-monospace">
-                  <i className="bi bi-file-earmark-pdf-fill me-2 text-danger"></i> Invoice PDF Live Preview
-                </h5>
-                <button
-                  type="button"
-                  className="btn-close btn-close-white"
-                  onClick={handleClosePreview}
-                  aria-label="Close"
-                ></button>
+        <div className="app-modern-modal-backdrop" onClick={handleClosePreview}>
+          <div className="app-modern-modal-card preview-pdf" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header" style={{ marginBottom: '12px' }}>
+              <div className="d-flex align-items-center gap-3">
+                <div className="app-modern-modal-icon red" style={{ width: '38px', height: '38px', fontSize: '18px' }}>
+                  <i className="bi bi-file-earmark-pdf-fill"></i>
+                </div>
+                <div>
+                  <h4 className="app-modern-modal-title" style={{ fontSize: '17px', margin: 0 }}>
+                    Invoice PDF Live Preview
+                  </h4>
+                  <span className="text-muted small">
+                    Bill #{invoiceForm.bill_number}
+                  </span>
+                </div>
               </div>
-              <div className="modal-body p-0 bg-secondary flex-grow-1 d-flex align-items-center justify-content-center">
-                {previewLoading || !previewBlobUrl ? (
-                  <div className="text-center text-white">
-                    <div className="spinner-border text-light mb-3" role="status" style={{ width: '3rem', height: '3rem' }}>
-                      <span className="visually-hidden">Loading...</span>
-                    </div>
-                    <p className="mb-0 fw-semibold">Loading PDF Preview...</p>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={handleClosePreview}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+
+            <div style={{ flex: '1 1 auto', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {previewLoading || !previewBlobUrl ? (
+                <div className="text-center py-5">
+                  <div className="spinner-border text-primary mb-3" role="status" style={{ width: '2.5rem', height: '2.5rem' }}>
+                    <span className="visually-hidden">Loading...</span>
                   </div>
-                ) : (
-                  <iframe
-                    src={`${previewBlobUrl}#zoom=125`}
-                    title="Invoice PDF"
-                    width="100%"
-                    height="100%"
-                    className="border-0"
-                  ></iframe>
-                )}
-              </div>
-              <div className="modal-footer border-0 py-2 d-flex justify-content-end gap-2 w-100">
-                <button
-                  type="button"
-                  onClick={handleClosePreview}
-                  className="btn btn-secondary btn-sm px-4"
-                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  Close & Go to History
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDownloadPreviewPdf}
-                  className="btn btn-primary btn-sm px-4"
-                  disabled={!previewBlobUrl}
-                  style={{ minWidth: '180px', height: '36px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  <i className="bi bi-download me-1"></i> Download PDF
-                </button>
-              </div>
+                  <p className="mb-0 fw-semibold text-muted">Loading PDF Preview...</p>
+                </div>
+              ) : (
+                <iframe
+                  src={`${previewBlobUrl}#zoom=125`}
+                  title="Invoice PDF"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 'none' }}
+                ></iframe>
+              )}
+            </div>
+
+            <div className="app-modern-modal-actions-row" style={{ marginTop: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={handleClosePreview}
+                style={{ maxWidth: '180px' }}
+              >
+                Close & Go to History
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-primary"
+                onClick={handleDownloadPreviewPdf}
+                disabled={!previewBlobUrl}
+                style={{ maxWidth: '180px' }}
+              >
+                <i className="bi bi-download"></i> Download PDF
+              </button>
             </div>
           </div>
         </div>
       )}
+
       {/* Modal overlay popup for Confirm Delete Charge */}
       {chargeToDelete !== null && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1070 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg">
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title text-danger fw-bold d-flex align-items-center">
-                  <i className="bi bi-exclamation-triangle-fill me-2 text-danger"></i> Delete Extra Charge
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setChargeToDelete(null)} aria-label="Close"></button>
+        <div className="app-modern-modal-backdrop" onClick={() => setChargeToDelete(null)}>
+          <div className="app-modern-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="app-modern-modal-header">
+              <div className="app-modern-modal-icon red">
+                <i className="bi bi-trash3"></i>
               </div>
-              <div className="modal-body py-3">
-                <p className="mb-0">
-                  Are you sure you want to delete this extra charge/cut of <strong>₹ {formatAmount(extraChargesList[chargeToDelete]?.amount)}</strong> ({extraChargesList[chargeToDelete]?.reason || 'no reason'})?
-                </p>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setChargeToDelete(null)}
-                  className="btn btn-light border btn-sm px-3"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDeleteCharge}
-                  className="btn btn-danger btn-sm px-3"
-                >
-                  Delete
-                </button>
-              </div>
+              <button
+                type="button"
+                className="app-modern-modal-close-btn"
+                onClick={() => setChargeToDelete(null)}
+                aria-label="Close"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
+            </div>
+            <h3 className="app-modern-modal-title">Delete Extra Charge</h3>
+            <p className="app-modern-modal-desc">
+              Are you sure you want to delete this extra charge/cut?
+            </p>
+            <div className="app-modern-modal-pill-box">
+              <span className="text-muted fw-semibold" style={{ fontSize: '12px' }}>
+                {extraChargesList[chargeToDelete]?.reason || 'Extra Charge'}
+              </span>
+              <strong className="text-danger" style={{ fontSize: '13.5px' }}>
+                ₹ {formatAmount(extraChargesList[chargeToDelete]?.amount)}
+              </strong>
+            </div>
+            <div className="app-modern-modal-actions-row">
+              <button
+                type="button"
+                className="app-modern-btn-secondary"
+                onClick={() => setChargeToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="app-modern-btn-danger"
+                onClick={handleConfirmDeleteCharge}
+              >
+                Delete Charge
+              </button>
             </div>
           </div>
         </div>

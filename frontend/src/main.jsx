@@ -10,6 +10,7 @@ import 'bootstrap/dist/js/bootstrap.bundle.min.js';
 // Import custom application stylesheets
 import './styles/fonts.css';
 import './styles/dashboard.css';
+import './styles/appHome.css';
 import './styles/print.css';
 import './styles/splash.css';
 

@@ -8,7 +8,6 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showContactModal, setShowContactModal] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -37,9 +36,10 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <div className="login-logo d-flex flex-column align-items-center mb-2">
+    <div className="login-wrapper" style={{ backgroundColor: '#0b1120', minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'stretch' }}>
+      <div className="login-container" style={{ width: '100%', maxWidth: '480px', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.4)' }}>
+        <div className="login-card" style={{ width: '100%', margin: '16px' }}>
+          <div className="login-logo d-flex flex-column align-items-center mb-2">
           <img
             src={logo}
             alt="Logo"
@@ -118,55 +118,8 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
             )}
           </button>
         </form>
-
-        <div className="text-center mt-3 pt-2 border-top">
-          <button
-            type="button"
-            className="btn btn-link text-decoration-none text-muted p-0 small"
-            onClick={() => setShowContactModal(true)}
-            style={{ fontSize: '0.85rem' }}
-          >
-            <i className="bi bi-telephone-fill me-1 text-primary"></i> Contact Us
-          </button>
-        </div>
       </div>
-
-      {/* Contact Us Modal */}
-      {showContactModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start" style={{ borderRadius: '16px' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold d-flex align-items-center text-primary">
-                  <i className="bi bi-envelope-fill me-2 text-primary"></i> Contact Us
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowContactModal(false)} aria-label="Close"></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="p-3 bg-light rounded-3 mb-2">
-                  <p className="fw-semibold text-black mb-2 small text-uppercase font-monospace">Developer Support Info</p>
-                  <p className="mb-2 text-dark fs-5">
-                    <strong>Yash Gajera</strong>
-                  </p>
-                  <p className="mb-0 text-black">
-                    <i className="bi bi-envelope-fill me-1 text-primary"></i> <strong>Email:</strong> <a href="mailto:gajerayash999@gmail.com" className="text-decoration-none text-dark">gajerayash999@gmail.com</a>
-                  </p>
-                </div>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button
-                  type="button"
-                  onClick={() => setShowContactModal(false)}
-                  className="btn btn-primary btn-sm px-4"
-                  style={{ borderRadius: '8px' }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
-  );
+  </div>
+);
 }

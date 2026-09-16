@@ -9,6 +9,7 @@ import InvoiceHistory from './pages/InvoiceHistory';
 import CreateInvoice from './pages/CreateInvoice';
 import CreateChallan from './pages/CreateChallan';
 import Dashboard from './pages/Dashboard';
+import AppHome from './pages/AppHome';
 import logoIcon from './assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import logoText from './assets/EmbroBill.png';
 
@@ -16,9 +17,11 @@ import logoText from './assets/EmbroBill.png';
 function ProtectedRoute({ user, loading }) {
   if (loading) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ minHeight: '100vh' }}>
-        <div className="spinner-border text-primary" role="status">
-          <span className="visually-hidden">Loading...</span>
+      <div style={{ backgroundColor: '#0b1120', minHeight: '100vh', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ width: '100%', maxWidth: '480px', minHeight: '100vh', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 10px 40px rgba(0, 0, 0, 0.4)' }}>
+          <div className="spinner-border text-primary" role="status">
+            <span className="visually-hidden">Loading...</span>
+          </div>
         </div>
       </div>
     );
@@ -33,20 +36,22 @@ function Splash({ fadeOut }) {
   const taglineWords = ["Unique", "Billing", "&", "Embroidery", "Solutions"];
 
   return (
-    <div className={`splash-screen ${fadeOut ? 'fade-out' : ''}`}>
-      <div className="splash-content">
-        <img src={logoIcon} className="splash-logo-icon" alt="Logo Icon" />
-        <img src={logoText} className="splash-logo-text" alt="EmbroBill" />
-        <div className="splash-tagline">
-          {taglineWords.map((word, index) => (
-            <span
-              key={index}
-              className="tagline-word"
-              style={{ animationDelay: `${0.5 + index * 0.08}s` }}
-            >
-              {word}
-            </span>
-          ))}
+    <div className={`splash-wrapper ${fadeOut ? 'fade-out' : ''}`}>
+      <div className="splash-container">
+        <div className="splash-content">
+          <img src={logoIcon} className="splash-logo-icon" alt="Logo Icon" />
+          <img src={logoText} className="splash-logo-text" alt="EmbroBill" />
+          <div className="splash-tagline">
+            {taglineWords.map((word, index) => (
+              <span
+                key={index}
+                className="tagline-word"
+                style={{ animationDelay: `${0.5 + index * 0.08}s` }}
+              >
+                {word}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -140,15 +145,22 @@ export default function App() {
     }
   };
 
+  const alertTimerRef = React.useRef(null);
+
   const triggerAlert = (message, type = 'success') => {
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+    }
     setAlert({ message, type });
-    // Auto-dismiss alert after 5 seconds
-    setTimeout(() => {
+    alertTimerRef.current = setTimeout(() => {
       setAlert(null);
-    }, 5000);
+    }, 4500);
   };
 
   const clearAlert = () => {
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+    }
     setAlert(null);
   };
 
@@ -252,7 +264,7 @@ export default function App() {
             path="/login"
             element={
               user ? (
-                <Navigate to="/dashboard" replace />
+                <Navigate to="/" replace />
               ) : (
                 <Login onLoginSuccess={(username) => setUser({ username })} triggerAlert={triggerAlert} />
               )
@@ -262,17 +274,18 @@ export default function App() {
           {/* Protected routes wrapped in main Layout */}
           <Route element={<ProtectedRoute user={user} loading={loading} />}>
             <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
-              {/* Index redirection */}
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              {/* Index & Home route */}
+              <Route path="/" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+              <Route path="/home" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
 
               {/* Dashboard route */}
-              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
 
               {/* Settings route */}
               <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
 
               {/* Invoice routes */}
-              <Route path="/invoice-history" element={<InvoiceHistory triggerAlert={triggerAlert} />} />
+              <Route path="/invoice-history" element={<InvoiceHistory user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
               <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
               <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
               <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />

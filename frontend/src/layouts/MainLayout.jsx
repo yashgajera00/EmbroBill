@@ -1,12 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import authAPI from '../services/authAPI';
 import logo from '../assets/logo.jpg';
 
 export default function MainLayout({ user, onLogout, alert, clearAlert }) {
-  const [showContactModal, setShowContactModal] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Reset scroll position on route change
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   const handleLogout = async (e) => {
     e.preventDefault();
@@ -23,7 +27,38 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
     return paths.some(path => location.pathname === path || location.pathname.startsWith(path)) ? 'active' : '';
   };
 
-  const hideNavbar = !user || location.pathname === '/login';
+  const isMobilePage = location.pathname === '/' || 
+    location.pathname === '/home' || 
+    location.pathname === '/dashboard' || 
+    location.pathname === '/create-invoice' || 
+    location.pathname.startsWith('/invoices/edit/') ||
+    location.pathname === '/create-challan' || 
+    location.pathname.startsWith('/challans/edit/') ||
+    location.pathname === '/invoice-history' ||
+    location.pathname === '/settings';
+  const hideNavbar = !user || location.pathname === '/login' || isMobilePage;
+
+  const getToastIcon = (type, message = '') => {
+    const msgLower = (message || '').toLowerCase();
+    if (msgLower.includes('unlocked')) {
+      return 'bi-unlock-fill';
+    }
+    if (msgLower.includes('locked')) {
+      return 'bi-lock-fill';
+    }
+    switch (type) {
+      case 'success':
+        return 'bi-check-circle-fill';
+      case 'danger':
+      case 'error':
+        return 'bi-exclamation-circle-fill';
+      case 'warning':
+        return 'bi-exclamation-triangle-fill';
+      case 'info':
+      default:
+        return 'bi-info-circle-fill';
+    }
+  };
 
   return (
     <div>
@@ -32,7 +67,7 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
         <nav className="navbar navbar-expand-lg navbar-dark no-print" style={{ backgroundColor: 'var(--sidebar-bg)', padding: '12px 20px', boxShadow: '0 4px 10px rgba(0, 0, 0, 0.1)' }}>
           <div className="container-fluid">
             {/* Logo / Brand */}
-            <Link className="navbar-brand fw-bold d-flex align-items-center me-4" to="/dashboard">
+            <Link className="navbar-brand fw-bold d-flex align-items-center me-4" to="/" title="Go to Home">
               <img 
                 src={logo} 
                 alt="Logo" 
@@ -65,6 +100,11 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
               {/* Left Side Links */}
               <ul className="navbar-nav me-auto mb-2 mb-lg-0">
                 <li className="nav-item me-2">
+                  <Link className={`nav-link px-3 py-2 rounded ${location.pathname === '/' || location.pathname === '/home' ? 'active' : ''}`} to="/">
+                    <i className="bi bi-house-door me-1"></i> Home
+                  </Link>
+                </li>
+                <li className="nav-item me-2">
                   <Link className={`nav-link px-3 py-2 rounded ${isActive(['/dashboard'])}`} to="/dashboard">
                     <i className="bi bi-speedometer2 me-1"></i> Dashboard
                   </Link>
@@ -84,16 +124,6 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
                     <i className="bi bi-file-earmark-text me-1"></i> Invoice History
                   </Link>
                 </li>
-                <li className="nav-item me-2">
-                  <button 
-                    type="button"
-                    className="nav-link px-3 py-2 rounded border-0 bg-transparent text-start w-100-mobile d-flex align-items-center"
-                    onClick={() => setShowContactModal(true)}
-                    style={{ outline: 'none', boxShadow: 'none' }}
-                  >
-                    <i className="bi bi-telephone-fill me-1"></i> Contact Us
-                  </button>
-                </li>
               </ul>
 
               {/* Right Side Info & Actions */}
@@ -111,25 +141,36 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
       )}
 
       {/* Page Content Container */}
-      <div id="content" style={{ padding: '30px', minHeight: 'calc(100vh - 65px)', display: 'flex', flexDirection: 'column' }}>
-        {/* Message Notification Alert Section */}
+      <div 
+        id="content" 
+        style={{ 
+          padding: isMobilePage ? '0' : '24px 0', 
+          minHeight: isMobilePage ? '100vh' : 'calc(100vh - 65px)', 
+          height: isMobilePage ? '100vh' : 'auto',
+          maxHeight: isMobilePage ? '100vh' : 'none',
+          overflow: isMobilePage ? 'hidden' : 'visible',
+          backgroundColor: isMobilePage ? '#0b1120' : 'transparent',
+          display: 'flex', 
+          flexDirection: 'column' 
+        }}
+      >
+        {/* Floating Pill Toast Notification matching user screenshot */}
         {alert && (
-          <div 
-            className="no-print" 
-            style={{ 
-              position: 'fixed', 
-              top: '80px', 
-              right: '30px', 
-              zIndex: 10000, 
-              minWidth: '280px',
-              maxWidth: 'calc(100vw - 60px)',
-              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.15)',
-              borderRadius: '8px'
-            }}
-          >
-            <div className={`alert alert-${alert.type} alert-dismissible fade show mb-0`} role="alert" style={{ borderRadius: '8px' }}>
-              {alert.message}
-              <button type="button" className="btn-close" onClick={clearAlert} aria-label="Close"></button>
+          <div className="app-pill-toast-container no-print">
+            <div className={`app-pill-toast ${alert.type || 'success'}`}>
+              <div className="app-pill-toast-left">
+                <i className={`bi ${getToastIcon(alert.type, alert.message)} app-pill-toast-icon`}></i>
+                <span className="app-pill-toast-message">{alert.message}</span>
+              </div>
+              <button
+                type="button"
+                className="app-pill-toast-close"
+                onClick={clearAlert}
+                title="Dismiss"
+                aria-label="Dismiss notification"
+              >
+                <i className="bi bi-x-lg"></i>
+              </button>
             </div>
           </div>
         )}
@@ -137,43 +178,6 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
         {/* Main Content Render */}
         <Outlet />
       </div>
-
-      {/* Contact Us Modal */}
-      {showContactModal && (
-        <div className="modal fade show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
-          <div className="modal-dialog modal-dialog-centered">
-            <div className="modal-content border-0 shadow-lg text-start" style={{ borderRadius: '16px' }}>
-              <div className="modal-header border-0 pb-0">
-                <h5 className="modal-title fw-bold d-flex align-items-center text-primary">
-                  <i className="bi bi-envelope-fill me-2 text-primary"></i> Contact Us
-                </h5>
-                <button type="button" className="btn-close" onClick={() => setShowContactModal(false)} aria-label="Close"></button>
-              </div>
-              <div className="modal-body py-3">
-                <div className="p-3 bg-light rounded-3 mb-2">
-                  <p className="fw-semibold text-black mb-2 small text-uppercase font-monospace">Developer Support Info</p>
-                  <p className="mb-2 text-dark fs-5">
-                    <strong>Yash Gajera</strong>
-                  </p>
-                  <p className="mb-0 text-black">
-                    <i className="bi bi-envelope-fill me-1 text-primary"></i> <strong>Email:</strong> <a href="mailto:gajerayash999@gmail.com" className="text-decoration-none text-dark">gajerayash999@gmail.com</a>
-                  </p>
-                </div>
-              </div>
-              <div className="modal-footer border-0 pt-0">
-                <button 
-                  type="button" 
-                  onClick={() => setShowContactModal(false)} 
-                  className="btn btn-primary btn-sm px-4"
-                  style={{ borderRadius: '8px' }}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
