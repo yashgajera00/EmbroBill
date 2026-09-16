@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 from django.views.decorators.clickjacking import xframe_options_exempt
 
 from .models import Company, Customer, Invoice, InvoiceItem, DashboardItem
@@ -288,6 +288,7 @@ def auth_status(request):
         'users_exist': users_exist
     })
 
+@csrf_exempt
 @ensure_csrf_cookie
 def login_view(request):
     if request.user.is_authenticated:
@@ -448,6 +449,7 @@ def company_settings(request):
             
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 def activate_license(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed.'}, status=405)
