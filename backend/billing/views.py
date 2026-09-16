@@ -625,17 +625,18 @@ def activate_license(request):
             'user_id': user_id,
         })
         
-        # Conditionally create the local Django user
-        if customer_name:
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            if not User.objects.filter(username=customer_name).exists():
-                User.objects.create_user(
-                    username=customer_name,
-                    password="1234",
-                    is_staff=True,
-                    is_superuser=True
-                )
+        # Ensure local Django user exists or is created
+        username_to_create = customer_name or user_id or "master_admin"
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        if not User.objects.filter(username=username_to_create).exists():
+            User.objects.create_user(
+                username=username_to_create,
+                password="1234",
+                is_staff=True,
+                is_superuser=True
+            )
+        customer_name = username_to_create
         
         return JsonResponse({
             'success': True,

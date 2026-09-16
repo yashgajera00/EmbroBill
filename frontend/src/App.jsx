@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom
 import authAPI from './services/authAPI';
 import MainLayout from './layouts/MainLayout';
 import Login from './pages/Login';
+import ActivateLicenseScreen from './pages/ActivateLicenseScreen';
 import Settings from './pages/Settings';
 import InvoiceHistory from './pages/InvoiceHistory';
 import CreateInvoice from './pages/CreateInvoice';
@@ -65,6 +66,10 @@ export default function App() {
   const [timerDone, setTimerDone] = useState(false);
   const [fadeOut, setFadeOut] = useState(false);
   
+  // First-time license activation state
+  const [usersExist, setUsersExist] = useState(true);
+  const [activationSuccessData, setActivationSuccessData] = useState(null);
+
   // Manage splash screen timer
   useEffect(() => {
     const delay = 1500;
@@ -90,6 +95,7 @@ export default function App() {
     const checkAuth = async () => {
       try {
         const data = await authAPI.status();
+        setUsersExist(data.users_exist !== false);
         if (data.isAuthenticated) {
           setUser({ username: data.username });
         } else {
@@ -124,20 +130,49 @@ export default function App() {
     setAlert(null);
   };
 
-  let mainContent = (
-    <BrowserRouter>
-      <Routes>
-        {/* Public login route */}
-        <Route
-          path="/login"
-          element={
-            user ? (
-              <Navigate to="/" replace />
-            ) : (
-              <Login onLoginSuccess={(username) => setUser({ username })} triggerAlert={triggerAlert} />
-            )
+  let mainContent;
+
+  if (activationSuccessData || !usersExist) {
+    mainContent = (
+      <ActivateLicenseScreen
+        activationSuccessData={activationSuccessData}
+        onActivationSuccess={(data) => {
+          setActivationSuccessData(data);
+          setUsersExist(false);
+        }}
+        onGoToLogin={() => {
+          setUsersExist(true);
+          setActivationSuccessData(null);
+        }}
+        onProceedToLogin={() => {
+          if (activationSuccessData?.customer_name) {
+            localStorage.setItem('embrobill_remember_username', activationSuccessData.customer_name);
           }
-        />
+          setUsersExist(true);
+          setActivationSuccessData(null);
+          triggerAlert('License activated! Please enter your password to sign in.', 'success');
+        }}
+      />
+    );
+  } else {
+    mainContent = (
+      <BrowserRouter>
+        <Routes>
+          {/* Public login route */}
+          <Route
+            path="/login"
+            element={
+              user ? (
+                <Navigate to="/" replace />
+              ) : (
+                <Login
+                  onLoginSuccess={(username) => setUser({ username })}
+                  triggerAlert={triggerAlert}
+                  onNeedActivate={() => setUsersExist(false)}
+                />
+              )
+            }
+          />
 
           {/* Protected routes wrapped in main Layout */}
           <Route element={<ProtectedRoute user={user} loading={loading} />}>
@@ -166,6 +201,7 @@ export default function App() {
         </Routes>
       </BrowserRouter>
     );
+  }
 
   if (showSplash) {
     return <Splash fadeOut={fadeOut} />;

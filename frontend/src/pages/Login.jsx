@@ -4,7 +4,7 @@ import authAPI from '../services/authAPI';
 import logoIcon from '../assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import '../styles/dashboard.css';
 
-export default function Login({ onLoginSuccess, triggerAlert }) {
+export default function Login({ onLoginSuccess, triggerAlert, onNeedActivate }) {
   const [username, setUsername] = useState(() => {
     return localStorage.getItem('embrobill_remember_username') || '';
   });
@@ -261,6 +261,30 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
                 </>
               )}
             </button>
+
+            {/* OPTIONAL ACTIVATE LICENSE LINK */}
+            {onNeedActivate && (
+              <div className="text-center mt-3">
+                <button
+                  type="button"
+                  className="eb-forgot-link"
+                  style={{
+                    fontSize: '12.5px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#6366f1',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                  onClick={onNeedActivate}
+                >
+                  <i className="bi bi-key"></i>
+                  <span>Enter License Key</span>
+                </button>
+              </div>
+            )}
           </form>
 
           {/* FOOTER & SECURITY */}
