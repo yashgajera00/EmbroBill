@@ -15,10 +15,11 @@ ALLOWED_HOSTS = [
 
 CORS_ALLOWED_ORIGINS = [
     "https://embrobill.vercel.app",
+    "https://embro-bill-2fn4mo2hm-yashs-projects-f719955e.vercel.app",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://embro-bill.vercel.app',
+    'https://embrobill.vercel.app',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:3001',
