@@ -15,11 +15,14 @@ ALLOWED_HOSTS = [
 
 CORS_ALLOWED_ORIGINS = [
     "https://embrobill.vercel.app",
-    "https://embro-bill-2fn4mo2hm-yashs-projects-f719955e.vercel.app",
+"https://embrobill-2fn4mo2hm-yashs-projects-f719955e.vercel.app/login",
 ]
+
+CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = [
     'https://embrobill.vercel.app',
+    'https://embrobill-2fn4mo2hm-yashs-projects-f719955e.vercel.app/login',
     'http://localhost:3000',
     'http://127.0.0.1:3000',
     'http://localhost:3001',
@@ -44,6 +47,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
