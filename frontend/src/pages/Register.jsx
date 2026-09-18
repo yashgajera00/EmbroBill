@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import authAPI from '../services/authAPI';
+import useUsernameCheck from '../hooks/useUsernameCheck';
 import logoIcon from '../assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import '../styles/dashboard.css';
 
 export default function Register({ onRegisterSuccess, triggerAlert }) {
   const [username, setUsername] = useState('');
+  const { status: usernameStatus, isAvailable, isTaken, isChecking, message: usernameMessage } = useUsernameCheck(username);
   const [companyName, setCompanyName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -41,6 +43,10 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
 
     if (!username.trim()) {
       setError('Please enter a username.');
+      return;
+    }
+    if (isTaken) {
+      setError('Username is already taken. Please choose another username.');
       return;
     }
     if (!companyName.trim()) {
@@ -146,10 +152,56 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                 <label className="eb-form-label" htmlFor="eb-reg-username">
                   USERNAME
                 </label>
+                {isAvailable && (
+                  <span
+                    style={{
+                      fontSize: '11.5px',
+                      color: '#16a34a',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="bi bi-check-circle-fill" style={{ fontSize: '12px' }}></i>
+                    Available
+                  </span>
+                )}
+                {isTaken && (
+                  <span
+                    style={{
+                      fontSize: '11.5px',
+                      color: '#dc2626',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <i className="bi bi-exclamation-circle-fill" style={{ fontSize: '12px' }}></i>
+                    Already Taken
+                  </span>
+                )}
               </div>
-              <div className="eb-input-wrapper">
+              <div
+                className="eb-input-wrapper"
+                style={{
+                  borderColor: isTaken ? '#ef4444' : isAvailable ? '#10b981' : undefined,
+                  boxShadow: isTaken
+                    ? '0 0 0 3px rgba(239, 68, 68, 0.15)'
+                    : isAvailable
+                    ? '0 0 0 3px rgba(16, 185, 129, 0.15)'
+                    : undefined,
+                  transition: 'border-color 0.2s, box-shadow 0.2s'
+                }}
+              >
                 <span className="eb-input-icon">
-                  <i className="bi bi-person"></i>
+                  <i
+                    className="bi bi-person"
+                    style={{
+                      color: isTaken ? '#ef4444' : isAvailable ? '#10b981' : undefined
+                    }}
+                  ></i>
                 </span>
                 <input
                   id="eb-reg-username"
@@ -162,7 +214,58 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                   disabled={loading}
                   required
                 />
+                {isChecking && (
+                  <span
+                    className="spinner-border spinner-border-sm text-muted me-2"
+                    style={{ width: '15px', height: '15px' }}
+                    title="Checking availability..."
+                  ></span>
+                )}
+                {isTaken && (
+                  <i className="bi bi-x-circle-fill text-danger me-2" style={{ fontSize: '16px' }}></i>
+                )}
+                {isAvailable && (
+                  <i className="bi bi-check-circle-fill text-success me-2" style={{ fontSize: '16px' }}></i>
+                )}
               </div>
+
+              {/* Bottom Warning / Availability Feedback Line */}
+              {usernameMessage && (
+                <div
+                  className="eb-username-warning-line"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '6px',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    fontSize: '12.5px',
+                    lineHeight: '1.4',
+                    fontWeight: '500',
+                    backgroundColor: isTaken ? '#fef2f2' : isAvailable ? '#f0fdf4' : '#f8fafc',
+                    color: isTaken ? '#991b1b' : isAvailable ? '#166534' : '#64748b',
+                    border: `1px solid ${isTaken ? '#fecaca' : isAvailable ? '#bbf7d0' : '#e2e8f0'}`,
+                    transition: 'all 0.2s ease-in-out'
+                  }}
+                >
+                  <i
+                    className={`bi ${
+                      isTaken
+                        ? 'bi-exclamation-circle-fill'
+                        : isAvailable
+                        ? 'bi-check-circle-fill'
+                        : 'bi-info-circle'
+                    }`}
+                    style={{
+                      fontSize: '15px',
+                      color: isTaken ? '#dc2626' : isAvailable ? '#16a34a' : '#64748b',
+                      flexShrink: 0
+                    }}
+                  ></i>
+                  <span>{usernameMessage}</span>
+                </div>
+              )}
             </div>
 
             {/* COMPANY NAME */}

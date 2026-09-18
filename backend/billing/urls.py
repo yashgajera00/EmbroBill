@@ -9,6 +9,7 @@ urlpatterns = [
     path('verify-password/', views.verify_password, name='api_verify_password'),
     path('settings/', views.company_settings, name='api_company_settings'),
     path('register/', views.register_view, name='api_register'),
+    path('check-username/', views.check_username, name='api_check_username'),
     
     # Customer API routes
     path('customers/', views.customer_list, name='api_customer_list'),

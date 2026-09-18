@@ -24,6 +24,10 @@ export const authAPI = {
   verifyPassword: async (password) => {
     const response = await api.post('/verify-password/', { password });
     return response.data;
+  },
+  checkUsername: async (username) => {
+    const response = await api.get(`/check-username/?username=${encodeURIComponent(username)}`);
+    return response.data;
   }
 };
 

@@ -546,6 +546,21 @@ def register_view(request):
     except Exception as e:
         return JsonResponse({'error': f'Registration failed: {str(e)}'}, status=500)
 
+@csrf_exempt
+def check_username(request):
+    username = request.GET.get('username', '').strip()
+    if not username:
+        return JsonResponse({'exists': False, 'available': False, 'message': 'Username parameter required.'})
+    
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    exists = User.objects.filter(username__iexact=username).exists()
+    return JsonResponse({
+        'username': username,
+        'exists': exists,
+        'available': not exists
+    })
+
 
 @api_login_required
 def customer_list(request):

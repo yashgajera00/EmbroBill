@@ -625,5 +625,27 @@ class AutoIncrementBillNumberTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_check_username(self):
+        from django.contrib.auth.models import User
+        User.objects.create_user(username="existing_user", password="password123")
+
+        # Test taken username
+        res_taken = self.client.get('/api/check-username/?username=existing_user')
+        self.assertEqual(res_taken.status_code, 200)
+        self.assertTrue(res_taken.json().get('exists'))
+        self.assertFalse(res_taken.json().get('available'))
+
+        # Test case-insensitive taken username
+        res_case = self.client.get('/api/check-username/?username=EXISTING_USER')
+        self.assertEqual(res_case.status_code, 200)
+        self.assertTrue(res_case.json().get('exists'))
+        self.assertFalse(res_case.json().get('available'))
+
+        # Test available username
+        res_avail = self.client.get('/api/check-username/?username=new_available_user')
+        self.assertEqual(res_avail.status_code, 200)
+        self.assertFalse(res_avail.json().get('exists'))
+        self.assertTrue(res_avail.json().get('available'))
+
 
 
