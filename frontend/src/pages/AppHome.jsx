@@ -9,22 +9,30 @@ export default function AppHome({ user, onLogout, triggerAlert }) {
   const [company, setCompany] = useState(null);
 
   // Fetch company details for GST number
-  useEffect(() => {
-    const fetchCompanyInfo = async () => {
-      try {
-        const data = await settingsAPI.get();
-        if (data) {
-          setCompany(data);
-        }
-      } catch (err) {
-        console.error('Failed to load company info for home screen:', err);
+  const fetchCompanyInfo = async () => {
+    try {
+      const data = await settingsAPI.get();
+      if (data) {
+        setCompany(data);
       }
-    };
+    } catch (err) {
+      console.error('Failed to load company info for home screen:', err);
+    }
+  };
+
+  useEffect(() => {
     fetchCompanyInfo();
+
+    const onFocus = () => fetchCompanyInfo();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
   }, []);
 
-  const username = user?.username || 'Yash';
-  const gstNumber = company?.gst_number || '24AAACP1234F1Z5';
+  const username = user?.username || company?.user_id || 'Yash';
+  const rawGst = (company && company.gst_number !== undefined && company.gst_number !== null)
+    ? company.gst_number
+    : (user?.gst_number || '');
+  const gstNumber = rawGst && rawGst.trim() ? rawGst.trim() : '-';
 
   return (
     <div className="app-home-wrapper">
