@@ -11,7 +11,7 @@ class HeaderSessionMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if settings.SESSION_COOKIE_NAME not in request.COOKIES:
+        if not request.COOKIES.get(settings.SESSION_COOKIE_NAME):
             auth_header = request.headers.get('Authorization', '')
             session_key = None
             if auth_header.startswith('Session '):
