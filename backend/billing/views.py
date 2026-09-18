@@ -494,6 +494,9 @@ def register_view(request):
 
     if not username:
         return JsonResponse({'error': 'Username is required.'}, status=400)
+    import re
+    if ' ' in username or re.search(r'\s', username):
+        return JsonResponse({'error': 'Username cannot contain spaces.'}, status=400)
     if not password or len(password) < 4:
         return JsonResponse({'error': 'Password must be at least 4 characters long.'}, status=400)
 
@@ -520,20 +523,21 @@ def register_view(request):
             elif not company:
                 company = Company.objects.create(user_id=user.username)
 
-        if company_name:
-            company.company_name = company_name
-        if gst_number:
-            company.gst_number = gst_number
-        if pan_number:
-            company.pan_number = pan_number
-        if phone:
-            company.phone = phone
-        if address:
-            company.address = address
-        company.user_id = user.username
-        company.save()
+        if company:
+            company.user_id = user.username
+            if company_name:
+                company.company_name = company_name
+            if gst_number:
+                company.gst_number = gst_number
+            if pan_number:
+                company.pan_number = pan_number
+            if phone:
+                company.phone = phone
+            if address:
+                company.address = address
+            company.save()
 
-        # Log the user in
+        # Log in the newly registered user
         login(request, user)
 
         return JsonResponse({
@@ -548,7 +552,11 @@ def register_view(request):
 
 @csrf_exempt
 def check_username(request):
-    username = request.GET.get('username', '').strip()
+    raw_username = request.GET.get('username', '')
+    import re
+    if ' ' in raw_username or re.search(r'\s', raw_username):
+        return JsonResponse({'exists': False, 'available': False, 'error': 'Username cannot contain spaces.'})
+    username = raw_username.strip()
     if not username:
         return JsonResponse({'exists': False, 'available': False, 'message': 'Username parameter required.'})
     

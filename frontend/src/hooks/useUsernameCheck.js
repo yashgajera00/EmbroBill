@@ -24,6 +24,13 @@ export function useUsernameCheck(username, delay = 350) {
       return;
     }
 
+    if (/\s/.test(username)) {
+      setStatus('invalid');
+      setExists(null);
+      setMessage('Username cannot contain spaces.');
+      return;
+    }
+
     if (trimmed.length < 3) {
       setStatus('idle');
       setExists(null);
@@ -68,7 +75,8 @@ export function useUsernameCheck(username, delay = 350) {
     message,
     isChecking: status === 'checking',
     isAvailable: status === 'available',
-    isTaken: status === 'taken'
+    isTaken: status === 'taken',
+    isInvalid: status === 'invalid'
   };
 }
 

@@ -161,7 +161,12 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
                   className="eb-input-field"
                   placeholder="master_admin"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') {
+                      e.preventDefault();
+                    }
+                  }}
+                  onChange={(e) => setUsername(e.target.value.replace(/\s+/g, ''))}
                   autoComplete="username"
                   autoFocus
                   disabled={loading}

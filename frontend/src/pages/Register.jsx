@@ -7,7 +7,8 @@ import '../styles/dashboard.css';
 
 export default function Register({ onRegisterSuccess, triggerAlert }) {
   const [username, setUsername] = useState('');
-  const { status: usernameStatus, isAvailable, isTaken, isChecking, message: usernameMessage } = useUsernameCheck(username);
+  const { status: usernameStatus, isAvailable, isTaken, isInvalid, isChecking, message: usernameMessage } = useUsernameCheck(username);
+  const hasUsernameError = isTaken || isInvalid || /\s/.test(username);
   const [companyName, setCompanyName] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -45,6 +46,10 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
       setError('Please enter a username.');
       return;
     }
+    if (/\s/.test(username) || isInvalid) {
+      setError('Username cannot contain spaces.');
+      return;
+    }
     if (isTaken) {
       setError('Username is already taken. Please choose another username.');
       return;
@@ -70,7 +75,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
 
     try {
       const payload = {
-        username: username.trim(),
+        username: username.trim().replace(/\s+/g, ''),
         password,
         company_name: companyName.trim(),
         gst_number: gstNumber.trim(),
@@ -167,7 +172,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                     Available
                   </span>
                 )}
-                {isTaken && (
+                {hasUsernameError && (
                   <span
                     style={{
                       fontSize: '11.5px',
@@ -179,15 +184,15 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                     }}
                   >
                     <i className="bi bi-exclamation-circle-fill" style={{ fontSize: '12px' }}></i>
-                    Already Taken
+                    {isInvalid || /\s/.test(username) ? 'No Spaces Allowed' : 'Already Taken'}
                   </span>
                 )}
               </div>
               <div
                 className="eb-input-wrapper"
                 style={{
-                  borderColor: isTaken ? '#ef4444' : isAvailable ? '#10b981' : undefined,
-                  boxShadow: isTaken
+                  borderColor: hasUsernameError ? '#ef4444' : isAvailable ? '#10b981' : undefined,
+                  boxShadow: hasUsernameError
                     ? '0 0 0 3px rgba(239, 68, 68, 0.15)'
                     : isAvailable
                     ? '0 0 0 3px rgba(16, 185, 129, 0.15)'
@@ -199,7 +204,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                   <i
                     className="bi bi-person"
                     style={{
-                      color: isTaken ? '#ef4444' : isAvailable ? '#10b981' : undefined
+                      color: hasUsernameError ? '#ef4444' : isAvailable ? '#10b981' : undefined
                     }}
                   ></i>
                 </span>
@@ -207,9 +212,17 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                   id="eb-reg-username"
                   type="text"
                   className="eb-input-field"
-                  placeholder="e.g. admin or your name"
+                  placeholder="e.g. admin or yourname"
                   value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ') {
+                      e.preventDefault();
+                    }
+                  }}
+                  onChange={(e) => {
+                    const noSpaces = e.target.value.replace(/\s+/g, '');
+                    setUsername(noSpaces);
+                  }}
                   autoComplete="username"
                   disabled={loading}
                   required
@@ -221,7 +234,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                     title="Checking availability..."
                   ></span>
                 )}
-                {isTaken && (
+                {hasUsernameError && (
                   <i className="bi bi-x-circle-fill text-danger me-2" style={{ fontSize: '16px' }}></i>
                 )}
                 {isAvailable && (
@@ -243,15 +256,15 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                     fontSize: '12.5px',
                     lineHeight: '1.4',
                     fontWeight: '500',
-                    backgroundColor: isTaken ? '#fef2f2' : isAvailable ? '#f0fdf4' : '#f8fafc',
-                    color: isTaken ? '#991b1b' : isAvailable ? '#166534' : '#64748b',
-                    border: `1px solid ${isTaken ? '#fecaca' : isAvailable ? '#bbf7d0' : '#e2e8f0'}`,
+                    backgroundColor: hasUsernameError ? '#fef2f2' : isAvailable ? '#f0fdf4' : '#f8fafc',
+                    color: hasUsernameError ? '#991b1b' : isAvailable ? '#166534' : '#64748b',
+                    border: `1px solid ${hasUsernameError ? '#fecaca' : isAvailable ? '#bbf7d0' : '#e2e8f0'}`,
                     transition: 'all 0.2s ease-in-out'
                   }}
                 >
                   <i
                     className={`bi ${
-                      isTaken
+                      hasUsernameError
                         ? 'bi-exclamation-circle-fill'
                         : isAvailable
                         ? 'bi-check-circle-fill'
@@ -259,7 +272,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
                     }`}
                     style={{
                       fontSize: '15px',
-                      color: isTaken ? '#dc2626' : isAvailable ? '#16a34a' : '#64748b',
+                      color: hasUsernameError ? '#dc2626' : isAvailable ? '#16a34a' : '#64748b',
                       flexShrink: 0
                     }}
                   ></i>
