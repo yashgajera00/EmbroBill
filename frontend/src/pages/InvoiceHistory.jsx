@@ -303,13 +303,6 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
       return;
     }
 
-    const isElectron = window.electron && window.electron.isElectron;
-    if (!isElectron) {
-      setPreviewBlobUrl(`/api/invoices/pdf/${previewInvoiceId}/`);
-      setPreviewLoading(false);
-      return;
-    }
-
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)

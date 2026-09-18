@@ -1047,15 +1047,6 @@ export default function CreateChallan({ triggerAlert, mode }) {
       return;
     }
 
-    const isElectron = window.electron && window.electron.isElectron;
-    if (!isElectron) {
-      // Browser environment: load the PDF URL directly to preserve Content-Disposition filename
-      setPreviewBlobUrl(`/api/invoices/pdf/${previewInvoiceId}/`);
-      setPreviewLoading(false);
-      return;
-    }
-
-    // Electron environment: fetch as blob to bypass CORS/mixed content iframe restrictions
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
