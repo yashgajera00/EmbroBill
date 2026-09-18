@@ -192,6 +192,13 @@ export default function CreateInvoice({ triggerAlert, mode }) {
   const isLinkedToDashboard = !!selectedPendingItemId;
   const isFormFieldsDisabled = mode === 'Add' && !selectedPendingItemId;
 
+  const hasCustomer = Boolean(
+    mode === 'Edit' ||
+    selectedPendingItemId ||
+    invoiceForm.customer ||
+    (customerForm.name && customerForm.name.trim().length > 0)
+  );
+
   const handleDeselectPendingItem = () => {
     handleCustomerSelectionChange("");
     setSelectedPendingItemId(null);
@@ -1979,7 +1986,9 @@ export default function CreateInvoice({ triggerAlert, mode }) {
               )}
             </div>
 
-            {/* GST Number */}
+            {hasCustomer && (
+              <>
+                {/* GST Number */}
             <div className="create-invoice-field">
               <label className="create-invoice-label">GST NUMBER</label>
               <div className="create-invoice-input-wrap">
@@ -2058,9 +2067,13 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                 />
               </div>
             </div>
+              </>
+            )}
           </div>
 
-          {/* Card 2: TEXTILE LINE ITEMS */}
+          {hasCustomer && (
+            <>
+              {/* Card 2: TEXTILE LINE ITEMS */}
           <div className="create-invoice-card">
             <div className="create-invoice-card-header">
               <div className="create-invoice-card-header-left">
@@ -2399,6 +2412,8 @@ export default function CreateInvoice({ triggerAlert, mode }) {
               )}
             </button>
           </div>
+            </>
+          )}
             </>
           )}
         </form>
