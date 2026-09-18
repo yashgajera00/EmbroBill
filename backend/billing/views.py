@@ -390,6 +390,7 @@ def logout_view(request):
     logout(request)
     return JsonResponse({'success': True})
 
+@csrf_exempt
 @api_login_required
 def change_password(request):
     if request.method == 'POST':
@@ -419,6 +420,7 @@ def change_password(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def verify_password(request):
     if request.method == 'POST':
@@ -437,6 +439,7 @@ def verify_password(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def company_settings(request):
     company = get_user_company(request.user)
