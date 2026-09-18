@@ -654,4 +654,73 @@ class AutoIncrementBillNumberTests(TestCase):
         self.assertEqual(res_spaces.json().get('error'), 'Username cannot contain spaces.')
 
 
+class MobileHeaderSessionAuthTests(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.username = 'mobile_user'
+        self.password = 'mobile_pass_123'
+        self.user = User.objects.create_user(username=self.username, password=self.password)
 
+    def test_login_returns_session_key(self):
+        response = self.client.post(
+            '/api/login/',
+            data=f'{{"username": "{self.username}", "password": "{self.password}"}}',
+            content_type='application/json'
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data.get('success'))
+        self.assertIsNotNone(data.get('session_key'))
+        self.assertTrue(len(data.get('session_key')) > 0)
+
+    def test_mobile_header_x_session_id_authenticates_protected_api(self):
+        # 1. Login to obtain session key
+        login_res = self.client.post(
+            '/api/login/',
+            data=f'{{"username": "{self.username}", "password": "{self.password}"}}',
+            content_type='application/json'
+        )
+        session_key = login_res.json()['session_key']
+
+        # 2. Clear client cookies (simulating mobile browser blocking 3rd-party cookies)
+        self.client.cookies.clear()
+
+        # 3. Unauthenticated request without cookies should fail with 401
+        unauth_res = self.client.get('/api/dashboard-items/')
+        self.assertEqual(unauth_res.status_code, 401)
+
+        # 4. Request with X-Session-ID header should succeed (HTTP 200)
+        auth_res = self.client.get('/api/dashboard-items/', HTTP_X_SESSION_ID=session_key)
+        self.assertEqual(auth_res.status_code, 200)
+
+    def test_mobile_header_authorization_session_authenticates_protected_api(self):
+        login_res = self.client.post(
+            '/api/login/',
+            data=f'{{"username": "{self.username}", "password": "{self.password}"}}',
+            content_type='application/json'
+        )
+        session_key = login_res.json()['session_key']
+
+        # Clear client cookies
+        self.client.cookies.clear()
+
+        # Request with Authorization: Session <session_key> header should succeed
+        auth_res = self.client.get('/api/dashboard-items/', HTTP_AUTHORIZATION=f'Session {session_key}')
+        self.assertEqual(auth_res.status_code, 200)
+
+    def test_auth_status_with_header_session(self):
+        login_res = self.client.post(
+            '/api/login/',
+            data=f'{{"username": "{self.username}", "password": "{self.password}"}}',
+            content_type='application/json'
+        )
+        session_key = login_res.json()['session_key']
+
+        # Clear client cookies
+        self.client.cookies.clear()
+
+        # Status request with X-Session-ID
+        status_res = self.client.get('/api/auth/status/', HTTP_X_SESSION_ID=session_key)
+        self.assertEqual(status_res.status_code, 200)
+        self.assertTrue(status_res.json().get('isAuthenticated'))
+        self.assertEqual(status_res.json().get('username'), self.username)

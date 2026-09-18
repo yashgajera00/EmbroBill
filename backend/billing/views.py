@@ -304,6 +304,7 @@ def auth_status(request):
         company = get_user_company(request.user)
         return JsonResponse({
             'isAuthenticated': True,
+            'session_key': request.session.session_key,
             'username': request.user.username,
             'gst_number': company.gst_number if company else '',
             'company_name': company.company_name if company else '',
@@ -321,6 +322,7 @@ def login_view(request):
         company = get_user_company(request.user)
         return JsonResponse({
             'success': True,
+            'session_key': request.session.session_key,
             'username': request.user.username,
             'gst_number': company.gst_number if company else '',
             'company_name': company.company_name if company else ''
@@ -371,9 +373,12 @@ def login_view(request):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
+                if not request.session.session_key:
+                    request.session.save()
                 company = get_user_company(user)
                 return JsonResponse({
                     'success': True,
+                    'session_key': request.session.session_key,
                     'username': user.username,
                     'gst_number': company.gst_number if company else '',
                     'company_name': company.company_name if company else ''
@@ -539,9 +544,12 @@ def register_view(request):
 
         # Log in the newly registered user
         login(request, user)
+        if not request.session.session_key:
+            request.session.save()
 
         return JsonResponse({
             'success': True,
+            'session_key': request.session.session_key,
             'username': user.username,
             'gst_number': company.gst_number or '',
             'company_name': company.company_name or '',
