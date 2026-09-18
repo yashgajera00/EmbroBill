@@ -647,5 +647,11 @@ class AutoIncrementBillNumberTests(TestCase):
         self.assertFalse(res_avail.json().get('exists'))
         self.assertTrue(res_avail.json().get('available'))
 
+        # Test username with spaces
+        res_spaces = self.client.get('/api/check-username/?username=user%20with%20spaces')
+        self.assertEqual(res_spaces.status_code, 200)
+        self.assertFalse(res_spaces.json().get('available'))
+        self.assertEqual(res_spaces.json().get('error'), 'Username cannot contain spaces.')
+
 
 
