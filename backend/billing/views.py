@@ -270,6 +270,29 @@ def serialize_invoice_item(item):
         'amount': float(item.amount)
     }
 
+# Helper to get company for user
+def get_user_company(user):
+    """Retrieve or initialize the Company profile for the given user."""
+    if not user or not user.is_authenticated:
+        return Company.objects.first()
+    company = Company.objects.filter(user_id=user.username).first()
+    if not company:
+        # Check if there is an unassigned company or if only 1 company exists
+        company = Company.objects.filter(user_id='').first()
+        if not company and Company.objects.count() == 1:
+            first_co = Company.objects.first()
+            if first_co and (not first_co.user_id or first_co.user_id == '246130'):
+                first_co.user_id = user.username
+                first_co.save()
+                return first_co
+            return first_co
+        if company:
+            company.user_id = user.username
+            company.save()
+        else:
+            company = Company.objects.create(user_id=user.username)
+    return company
+
 # View Actions
 @ensure_csrf_cookie
 def auth_status(request):
@@ -278,9 +301,12 @@ def auth_status(request):
     users_exist = User.objects.exists()
     
     if request.user.is_authenticated:
+        company = get_user_company(request.user)
         return JsonResponse({
             'isAuthenticated': True,
             'username': request.user.username,
+            'gst_number': company.gst_number if company else '',
+            'company_name': company.company_name if company else '',
             'users_exist': users_exist
         })
     return JsonResponse({
@@ -292,9 +318,12 @@ def auth_status(request):
 @ensure_csrf_cookie
 def login_view(request):
     if request.user.is_authenticated:
+        company = get_user_company(request.user)
         return JsonResponse({
             'success': True,
-            'username': request.user.username
+            'username': request.user.username,
+            'gst_number': company.gst_number if company else '',
+            'company_name': company.company_name if company else ''
         })
     
     if request.method == 'POST':
@@ -342,9 +371,12 @@ def login_view(request):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
+                company = get_user_company(user)
                 return JsonResponse({
                     'success': True,
-                    'username': user.username
+                    'username': user.username,
+                    'gst_number': company.gst_number if company else '',
+                    'company_name': company.company_name if company else ''
                 })
             else:
                 return JsonResponse({'error': 'Invalid username or password.'}, status=400)
@@ -353,6 +385,7 @@ def login_view(request):
             
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 def logout_view(request):
     logout(request)
     return JsonResponse({'success': True})
@@ -406,7 +439,7 @@ def verify_password(request):
 
 @api_login_required
 def company_settings(request):
-    company = Company.objects.first()
+    company = get_user_company(request.user)
     
     if request.method == 'GET':
         if company:
@@ -422,7 +455,10 @@ def company_settings(request):
                 form = CompanyForm(data)
                 
             if form.is_valid():
-                saved_company = form.save()
+                saved_company = form.save(commit=False)
+                if request.user.is_authenticated and not saved_company.user_id:
+                    saved_company.user_id = request.user.username
+                saved_company.save()
                 return JsonResponse(serialize_company(saved_company))
             else:
                 return JsonResponse({'error': 'Invalid form data.', 'details': form.errors}, status=400)
@@ -473,9 +509,13 @@ def register_view(request):
         )
 
         # Update or create Company details in database
-        company = Company.objects.first()
+        company = Company.objects.filter(user_id=user.username).first()
         if not company:
-            company = Company.objects.create()
+            company = Company.objects.filter(user_id='').first()
+            if not company and Company.objects.count() == 1 and not Company.objects.first().user_id:
+                company = Company.objects.first()
+            elif not company:
+                company = Company.objects.create(user_id=user.username)
 
         if company_name:
             company.company_name = company_name
@@ -496,6 +536,8 @@ def register_view(request):
         return JsonResponse({
             'success': True,
             'username': user.username,
+            'gst_number': company.gst_number or '',
+            'company_name': company.company_name or '',
             'message': 'Account registered successfully.'
         })
     except Exception as e:
@@ -886,7 +928,7 @@ def invoice_view(request, pk):
 @xframe_options_exempt
 def invoice_pdf(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
-    company = Company.objects.first()
+    company = get_user_company(request.user)
     
     if not company:
         return HttpResponse("Please configure Company Settings first.", status=400)
@@ -942,7 +984,7 @@ def invoice_pdf_bulk(request):
     if not ids:
         return HttpResponse("No invoice IDs provided.", status=400)
         
-    company = Company.objects.first()
+    company = get_user_company(request.user)
     if not company:
         return HttpResponse("Please configure Company Settings first.", status=400)
         
