@@ -163,6 +163,7 @@ class BillingSystemTests(TestCase):
         
         import datetime
         invoice = Invoice.objects.create(
+            user=user,
             bill_number=None, # Null bill number test
             customer=self.customer,
             bill_date=datetime.date(2026, 6, 20),
@@ -189,12 +190,14 @@ class BillingSystemTests(TestCase):
         
         import datetime
         inv1 = Invoice.objects.create(
+            user=user,
             bill_number="BILL/1",
             customer=self.customer,
             bill_date=datetime.date(2026, 6, 20),
             amount=100.00
         )
         inv2 = Invoice.objects.create(
+            user=user,
             bill_number="BILL/2",
             customer=self.customer,
             bill_date=datetime.date(2026, 6, 20),
@@ -223,9 +226,11 @@ class BillingSystemTests(TestCase):
         
         import datetime
         inv1 = Invoice.objects.create(
+            user=user,
             bill_number="BILL/O1", customer=self.customer, bill_date=datetime.date(2026, 6, 20), amount=100.00
         )
         inv2 = Invoice.objects.create(
+            user=user,
             bill_number="BILL/O2", customer=self.customer, bill_date=datetime.date(2026, 6, 20), amount=200.00
         )
         
@@ -724,3 +729,276 @@ class MobileHeaderSessionAuthTests(TestCase):
         self.assertEqual(status_res.status_code, 200)
         self.assertTrue(status_res.json().get('isAuthenticated'))
         self.assertEqual(status_res.json().get('username'), self.username)
+
+
+class MultiUserDataIsolationTests(TestCase):
+    def setUp(self):
+        import json
+        from django.contrib.auth.models import User
+        # User 1
+        self.user1 = User.objects.create_user(username='business_one', password='password123')
+        # User 2
+        self.user2 = User.objects.create_user(username='business_two', password='password123')
+
+        # Company 1
+        self.company1 = Company.objects.create(
+            user=self.user1,
+            company_name="Company One",
+            gst_number="24AAAAA1111A1Z1",
+            bill_no_prefix="INV-",
+            bill_no_start_number=1
+        )
+        # Company 2
+        self.company2 = Company.objects.create(
+            user=self.user2,
+            company_name="Company Two",
+            gst_number="24BBBBB2222B1Z2",
+            bill_no_prefix="INV-",
+            bill_no_start_number=1
+        )
+
+    def test_company_settings_isolation(self):
+        import json
+        # User 1 logs in and updates company settings
+        self.client.force_login(self.user1)
+        res = self.client.get('/api/settings/')
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()['company_name'], "Company One")
+
+        update_res = self.client.post(
+            '/api/settings/',
+            data=json.dumps({'company_name': 'Company One Renamed', 'phone': '1111111111'}),
+            content_type='application/json'
+        )
+        self.assertEqual(update_res.status_code, 200)
+        self.assertEqual(update_res.json()['company_name'], "Company One Renamed")
+
+        # User 2 logs in and verifies their company settings are unchanged
+        self.client.force_login(self.user2)
+        res2 = self.client.get('/api/settings/')
+        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(res2.json()['company_name'], "Company Two")
+        self.assertNotEqual(res2.json().get('phone'), "1111111111")
+
+    def test_customer_isolation(self):
+        import json
+        # User 1 creates Customer 1
+        self.client.force_login(self.user1)
+        add_res = self.client.post(
+            '/api/customers/add/',
+            data=json.dumps({'name': 'Customer User 1', 'address': 'Surat', 'gst_number': '24CUST1'}),
+            content_type='application/json'
+        )
+        self.assertEqual(add_res.status_code, 200)
+        cust1_id = add_res.json()['id']
+
+        # User 1 sees Customer 1
+        list_res1 = self.client.get('/api/customers/')
+        self.assertEqual(len(list_res1.json()), 1)
+        self.assertEqual(list_res1.json()[0]['name'], 'Customer User 1')
+
+        # User 2 logs in: Customer list must be empty!
+        self.client.force_login(self.user2)
+        list_res2 = self.client.get('/api/customers/')
+        self.assertEqual(len(list_res2.json()), 0)
+
+        # User 2 cannot access Customer 1
+        get_res = self.client.get(f'/api/customers/{cust1_id}/')
+        self.assertEqual(get_res.status_code, 404)
+
+        # User 2 cannot edit Customer 1
+        edit_res = self.client.post(f'/api/customers/edit/{cust1_id}/', data=json.dumps({'name': 'Hacked'}), content_type='application/json')
+        self.assertEqual(edit_res.status_code, 404)
+
+        # User 2 cannot delete Customer 1
+        del_res = self.client.post(f'/api/customers/delete/{cust1_id}/')
+        self.assertEqual(del_res.status_code, 404)
+        self.assertTrue(Customer.objects.filter(id=cust1_id).exists())
+
+    def test_invoice_isolation_and_duplicate_bill_numbers(self):
+        import json
+        # User 1 creates an invoice
+        self.client.force_login(self.user1)
+        inv_payload1 = {
+            'bill_date': '2026-09-18',
+            'customer_name': 'Customer A',
+            'gross_amount': 1000.00,
+            'discount_percent': 0.00,
+            'discount_amount': 0.00,
+            'blouse_charge': 0.00,
+            'subtotal': 1000.00,
+            'sgst_percent': 2.50,
+            'sgst_amount': 25.00,
+            'cgst_percent': 2.50,
+            'cgst_amount': 25.00,
+            'round_off': 0.00,
+            'amount': 1050.00,
+            'items': [{'design': 'D1', 'qty': 10, 'rate': 100, 'amount': 1000}]
+        }
+        add_res1 = self.client.post('/api/invoices/add/', data=json.dumps(inv_payload1), content_type='application/json')
+        self.assertEqual(add_res1.status_code, 200)
+        inv1 = add_res1.json()
+        self.assertEqual(inv1['bill_number'], 'INV-1')
+
+        # User 2 creates an invoice: it ALSO gets bill_number 'INV-1' with NO unique constraint error!
+        self.client.force_login(self.user2)
+        inv_payload2 = {
+            'bill_date': '2026-09-18',
+            'customer_name': 'Customer B',
+            'gross_amount': 1000.00,
+            'discount_percent': 0.00,
+            'discount_amount': 0.00,
+            'blouse_charge': 0.00,
+            'subtotal': 1000.00,
+            'sgst_percent': 2.50,
+            'sgst_amount': 25.00,
+            'cgst_percent': 2.50,
+            'cgst_amount': 25.00,
+            'round_off': 0.00,
+            'amount': 1050.00,
+            'items': [{'design': 'D2', 'qty': 5, 'rate': 200, 'amount': 1000}]
+        }
+        add_res2 = self.client.post('/api/invoices/add/', data=json.dumps(inv_payload2), content_type='application/json')
+        self.assertEqual(add_res2.status_code, 200)
+        inv2 = add_res2.json()
+        self.assertEqual(inv2['bill_number'], 'INV-1')
+        self.assertNotEqual(inv1['id'], inv2['id'])
+
+        # User 1 sees only their invoice
+        self.client.force_login(self.user1)
+        list1 = self.client.get('/api/invoices/').json()
+        self.assertEqual(len(list1), 1)
+        self.assertEqual(list1[0]['id'], inv1['id'])
+
+        # User 2 sees only their invoice
+        self.client.force_login(self.user2)
+        list2 = self.client.get('/api/invoices/').json()
+        self.assertEqual(len(list2), 1)
+        self.assertEqual(list2[0]['id'], inv2['id'])
+
+        # User 2 cannot access, edit, delete, or print User 1's invoice
+        self.assertEqual(self.client.get(f'/api/invoices/view/{inv1["id"]}/').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/invoices/pdf/{inv1["id"]}/').status_code, 404)
+        self.assertEqual(self.client.post(f'/api/invoices/edit/{inv1["id"]}/', data=json.dumps(inv_payload2), content_type='application/json').status_code, 404)
+        self.assertEqual(self.client.post(f'/api/invoices/delete/{inv1["id"]}/').status_code, 404)
+        self.assertEqual(self.client.get(f'/api/invoices/pdf/bulk/?ids={inv1["id"]}').status_code, 404)
+
+    def test_dashboard_items_isolation(self):
+        import json
+        # User 1 creates dashboard item
+        self.client.force_login(self.user1)
+        item_payload = {
+            'customer_name': 'Dashboard Customer 1',
+            'date': '2026-09-18',
+            'products': [{'design': 'Design 1', 'qty': 20, 'rate': 50}]
+        }
+        add_res = self.client.post('/api/dashboard-items/add/', data=json.dumps(item_payload), content_type='application/json')
+        self.assertEqual(add_res.status_code, 201)
+        item1_id = add_res.json()['id']
+
+        # User 1 sees dashboard item
+        self.assertEqual(len(self.client.get('/api/dashboard-items/').json()), 1)
+
+        # User 2 sees empty dashboard
+        self.client.force_login(self.user2)
+        self.assertEqual(len(self.client.get('/api/dashboard-items/').json()), 0)
+
+        # User 2 cannot edit or delete User 1's dashboard item
+        self.assertEqual(self.client.post(f'/api/dashboard-items/edit/{item1_id}/', data=json.dumps(item_payload), content_type='application/json').status_code, 404)
+        self.assertEqual(self.client.post(f'/api/dashboard-items/delete/{item1_id}/').status_code, 404)
+
+    def test_bill_number_sequence_isolation(self):
+        import json
+        self.company1.bill_no_prefix = "EB/24-25/"
+        self.company1.bill_no_start_number = 100
+        self.company1.save()
+
+        self.company2.bill_no_prefix = "INV-"
+        self.company2.bill_no_start_number = 1
+        self.company2.save()
+
+        # User 1 next bill
+        self.client.force_login(self.user1)
+        res1 = self.client.get('/api/invoices/next-bill-number/')
+        self.assertEqual(res1.json()['next_bill_number'], 'EB/24-25/100')
+
+        # User 2 next bill
+        self.client.force_login(self.user2)
+        res2 = self.client.get('/api/invoices/next-bill-number/')
+        self.assertEqual(res2.json()['next_bill_number'], 'INV-1')
+
+        # User 1 creates an invoice
+        self.client.force_login(self.user1)
+        inv_payload = {
+            'bill_date': '2026-09-18',
+            'customer_name': 'Customer A',
+            'gross_amount': 500.00,
+            'discount_percent': 0.00,
+            'discount_amount': 0.00,
+            'blouse_charge': 0.00,
+            'subtotal': 500.00,
+            'sgst_percent': 2.50,
+            'sgst_amount': 12.50,
+            'cgst_percent': 2.50,
+            'cgst_amount': 12.50,
+            'round_off': 0.00,
+            'amount': 525.00,
+            'items': [{'design': 'D1', 'qty': 5, 'rate': 100, 'amount': 500}]
+        }
+        res_create = self.client.post('/api/invoices/add/', data=json.dumps(inv_payload), content_type='application/json')
+        self.assertEqual(res_create.status_code, 200)
+        self.assertEqual(res_create.json()['bill_number'], 'EB/24-25/100')
+
+        # User 1 next bill is now EB/24-25/101
+        res1_after = self.client.get('/api/invoices/next-bill-number/')
+        self.assertEqual(res1_after.json()['next_bill_number'], 'EB/24-25/101')
+
+        # User 2 next bill is STILL INV-1
+        self.client.force_login(self.user2)
+        res2_after = self.client.get('/api/invoices/next-bill-number/')
+        self.assertEqual(res2_after.json()['next_bill_number'], 'INV-1')
+
+    def test_registration_creates_isolated_company(self):
+        import json
+        # Register user Alice
+        reg_alice = self.client.post(
+            '/api/register/',
+            data=json.dumps({
+                'username': 'user_alice',
+                'password': 'password123',
+                'company_name': 'Alice Textiles',
+                'gst_number': '24ALICE1234F1Z1'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(reg_alice.status_code, 200)
+
+        # Register user Bob
+        reg_bob = self.client.post(
+            '/api/register/',
+            data=json.dumps({
+                'username': 'user_bob',
+                'password': 'password123',
+                'company_name': 'Bob Embroidery',
+                'gst_number': '24BOBBB1234F1Z2'
+            }),
+            content_type='application/json'
+        )
+        self.assertEqual(reg_bob.status_code, 200)
+
+        # Alice's settings
+        from django.contrib.auth.models import User
+        alice = User.objects.get(username='user_alice')
+        bob = User.objects.get(username='user_bob')
+
+        self.client.force_login(alice)
+        alice_settings = self.client.get('/api/settings/').json()
+        self.assertEqual(alice_settings['company_name'], 'Alice Textiles')
+        self.assertEqual(alice_settings['gst_number'], '24ALICE1234F1Z1')
+
+        self.client.force_login(bob)
+        bob_settings = self.client.get('/api/settings/').json()
+        self.assertEqual(bob_settings['company_name'], 'Bob Embroidery')
+        self.assertEqual(bob_settings['gst_number'], '24BOBBB1234F1Z2')
+
+

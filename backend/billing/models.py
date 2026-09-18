@@ -1,6 +1,8 @@
 from django.db import models
+from django.conf import settings
 
 class Company(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='companies')
     address = models.TextField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
     state_code = models.CharField(max_length=10, default="24-GJ", blank=True, null=True)
@@ -24,7 +26,6 @@ class Company(models.Model):
     pan_number = models.CharField(max_length=50, blank=True, default="")
     plan_expiry_date = models.DateField(blank=True, null=True)
     license_key = models.CharField(max_length=255, blank=True, default="")
-    user_id = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
         verbose_name_plural = "Company Settings"
@@ -34,6 +35,7 @@ class Company(models.Model):
 
 
 class Customer(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='customers')
     name = models.CharField(max_length=150)
     address = models.TextField(blank=True, default="")
     gst_number = models.CharField(max_length=15, blank=True, default="")
@@ -43,7 +45,8 @@ class Customer(models.Model):
 
 
 class Invoice(models.Model):
-    bill_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='invoices')
+    bill_number = models.CharField(max_length=50, blank=True, null=True)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     dashboard_item = models.ForeignKey('DashboardItem', on_delete=models.SET_NULL, null=True, blank=True, related_name='invoices')
     customer_name = models.CharField(max_length=150, blank=True, default="")
@@ -82,6 +85,15 @@ class Invoice(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'bill_number'],
+                condition=models.Q(bill_number__isnull=False) & ~models.Q(bill_number=''),
+                name='unique_user_bill_number'
+            )
+        ]
+
     @property
     def display_customer_name(self):
         return self.customer_name or (self.customer.name if self.customer else "")
@@ -116,6 +128,7 @@ class InvoiceItem(models.Model):
 
 
 class DashboardItem(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True, related_name='dashboard_items')
     customer_name = models.CharField(max_length=150)
     date = models.DateField()
     design = models.CharField(max_length=100, blank=True, default="")

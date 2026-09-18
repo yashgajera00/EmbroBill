@@ -6,7 +6,7 @@ class CompanyForm(forms.ModelForm):
         model = Company
         fields = [
             'company_name', 'gst_number', 'pan_number', 'plan_expiry_date',
-            'license_key', 'user_id',
+            'license_key',
             'address', 'phone', 'state_code', 'bank_name', 
             'account_number', 'ifsc_code', 'terms_conditions',
             'bill_no_prefix', 'bill_no_start_number', 'default_hsn_code'
@@ -17,7 +17,6 @@ class CompanyForm(forms.ModelForm):
             'pan_number': forms.TextInput(attrs={'class': 'form-control'}),
             'plan_expiry_date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
             'license_key': forms.TextInput(attrs={'class': 'form-control'}),
-            'user_id': forms.TextInput(attrs={'class': 'form-control'}),
             'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
             'phone': forms.TextInput(attrs={'class': 'form-control'}),
             'state_code': forms.TextInput(attrs={'class': 'form-control'}),

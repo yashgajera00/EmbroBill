@@ -56,7 +56,7 @@ def clean_decimal_value(val, field_name, required=False):
 
 # ─── Per-Product Status Helpers ─────────────────────────────────────────
 
-def _mark_dashboard_products_done(billed_products, invoice_id):
+def _mark_dashboard_products_done(billed_products, invoice_id, user=None):
     """Mark specific products inside DashboardItem.products_json as 'Done' and link to invoice_id."""
     if not billed_products:
         return
@@ -70,7 +70,10 @@ def _mark_dashboard_products_done(billed_products, invoice_id):
     
     for item_id, indices in items_map.items():
         try:
-            db_item = DashboardItem.objects.get(id=item_id)
+            query = {'id': item_id}
+            if user and user.is_authenticated:
+                query['user'] = user
+            db_item = DashboardItem.objects.get(**query)
         except DashboardItem.DoesNotExist:
             continue
         products = []
@@ -99,12 +102,14 @@ def _mark_dashboard_products_done(billed_products, invoice_id):
         db_item.save()
 
 
-def _revert_dashboard_products_for_invoice(invoice_id):
+def _revert_dashboard_products_for_invoice(invoice_id, user=None):
     """Revert all dashboard products linked to a given invoice_id back to 'Pending'."""
     if not invoice_id:
         return
-    # Search all dashboard items for products linked to this invoice
-    for db_item in DashboardItem.objects.all():
+    query = {}
+    if user and user.is_authenticated:
+        query['user'] = user
+    for db_item in DashboardItem.objects.filter(**query):
         products = []
         try:
             products = json.loads(db_item.products_json) if db_item.products_json else []
@@ -147,8 +152,14 @@ def increment_bill_number(bill_no):
         # If no trailing digits, append "1"
         return f"{bill_no}1"
 
-def get_next_bill_number():
-    company = Company.objects.first()
+def get_next_bill_number(user=None):
+    if user and user.is_authenticated:
+        company = get_user_company(user)
+        invoices_with_prefix = Invoice.objects.filter(user=user, is_challan=False)
+    else:
+        company = Company.objects.first()
+        invoices_with_prefix = Invoice.objects.filter(is_challan=False)
+
     prefix = getattr(company, 'bill_no_prefix', '') or ''
     prefix = prefix.strip()
     
@@ -160,7 +171,7 @@ def get_next_bill_number():
     start_bill_no = f"{prefix}{start_num}"
     
     # Check if there are any invoices starting with this prefix
-    invoices_with_prefix = Invoice.objects.filter(is_challan=False, bill_number__startswith=prefix)
+    invoices_with_prefix = invoices_with_prefix.filter(bill_number__startswith=prefix)
     
     if not invoices_with_prefix.exists():
         return start_bill_no
@@ -182,7 +193,7 @@ def get_next_bill_number():
 
 @api_login_required
 def next_bill_number_view(request):
-    next_bill = get_next_bill_number()
+    next_bill = get_next_bill_number(user=request.user)
     return JsonResponse({'next_bill_number': next_bill})
 
 # Serialization Helpers
@@ -195,6 +206,10 @@ def serialize_customer(customer):
     }
 
 def serialize_company(company):
+    user_identifier = ''
+    if company.user:
+        user_identifier = company.user.username
+
     return {
         'id': company.id,
         'company_name': company.company_name,
@@ -208,7 +223,7 @@ def serialize_company(company):
         'ifsc_code': company.ifsc_code,
         'terms_conditions': company.terms_conditions,
         'plan_expiry_date': company.plan_expiry_date.isoformat() if company.plan_expiry_date else '',
-        'user_id': company.user_id,
+        'user_id': user_identifier,
         'bill_no_prefix': company.bill_no_prefix or '',
         'bill_no_start_number': company.bill_no_start_number or 1,
         'default_hsn_code': company.default_hsn_code or ''
@@ -272,25 +287,18 @@ def serialize_invoice_item(item):
 
 # Helper to get company for user
 def get_user_company(user):
-    """Retrieve or initialize the Company profile for the given user."""
+    """Retrieve or initialize the isolated Company profile for the given user."""
     if not user or not user.is_authenticated:
         return Company.objects.first()
-    company = Company.objects.filter(user_id=user.username).first()
+    company = Company.objects.filter(user=user).first()
     if not company:
-        # Check if there is an unassigned company or if only 1 company exists
-        company = Company.objects.filter(user_id='').first()
-        if not company and Company.objects.count() == 1:
-            first_co = Company.objects.first()
-            if first_co and (not first_co.user_id or first_co.user_id == '246130'):
-                first_co.user_id = user.username
-                first_co.save()
-                return first_co
-            return first_co
-        if company:
-            company.user_id = user.username
-            company.save()
-        else:
-            company = Company.objects.create(user_id=user.username)
+        # Check if there is an unassigned company from seeding and no other users have a company
+        unassigned = Company.objects.filter(user__isnull=True).first()
+        if unassigned and not Company.objects.filter(user__isnull=False).exists():
+            unassigned.user = user
+            unassigned.save()
+            return unassigned
+        company = Company.objects.create(user=user)
     return company
 
 # View Actions
@@ -464,8 +472,7 @@ def company_settings(request):
                 
             if form.is_valid():
                 saved_company = form.save(commit=False)
-                if request.user.is_authenticated and not saved_company.user_id:
-                    saved_company.user_id = request.user.username
+                saved_company.user = request.user
                 saved_company.save()
                 return JsonResponse(serialize_company(saved_company))
             else:
@@ -519,28 +526,25 @@ def register_view(request):
             is_staff=True
         )
 
-        # Update or create Company details in database
-        company = Company.objects.filter(user_id=user.username).first()
-        if not company:
-            company = Company.objects.filter(user_id='').first()
-            if not company and Company.objects.count() == 1 and not Company.objects.first().user_id:
-                company = Company.objects.first()
-            elif not company:
-                company = Company.objects.create(user_id=user.username)
+        # Get or create isolated Company details for this user
+        unassigned = Company.objects.filter(user__isnull=True).first()
+        if unassigned and User.objects.count() == 1:
+            company = unassigned
+            company.user = user
+        else:
+            company = Company.objects.create(user=user)
 
-        if company:
-            company.user_id = user.username
-            if company_name:
-                company.company_name = company_name
-            if gst_number:
-                company.gst_number = gst_number
-            if pan_number:
-                company.pan_number = pan_number
-            if phone:
-                company.phone = phone
-            if address:
-                company.address = address
-            company.save()
+        if company_name:
+            company.company_name = company_name
+        if gst_number:
+            company.gst_number = gst_number
+        if pan_number:
+            company.pan_number = pan_number
+        if phone:
+            company.phone = phone
+        if address:
+            company.address = address
+        company.save()
 
         # Log in the newly registered user
         login(request, user)
@@ -581,19 +585,19 @@ def check_username(request):
 @api_login_required
 def customer_list(request):
     query = request.GET.get('q', '')
+    customers = Customer.objects.filter(user=request.user)
     if query:
-        customers = Customer.objects.filter(
+        customers = customers.filter(
             Q(name__icontains=query) | Q(gst_number__icontains=query)
-        ).order_by('name')
-    else:
-        customers = Customer.objects.all().order_by('name')
+        )
+    customers = customers.order_by('name')
         
     serialized = [serialize_customer(c) for c in customers]
     return JsonResponse(serialized, safe=False)
 
 @api_login_required
 def customer_get(request, pk):
-    customer = get_object_or_404(Customer, pk=pk)
+    customer = get_object_or_404(Customer, pk=pk, user=request.user)
     return JsonResponse(serialize_customer(customer))
 
 @csrf_exempt
@@ -604,7 +608,9 @@ def customer_add(request):
             data = json.loads(request.body)
             form = CustomerForm(data)
             if form.is_valid():
-                customer = form.save()
+                customer = form.save(commit=False)
+                customer.user = request.user
+                customer.save()
                 return JsonResponse(serialize_customer(customer))
             else:
                 return JsonResponse({'error': 'Invalid customer form.', 'details': form.errors}, status=400)
@@ -615,13 +621,15 @@ def customer_add(request):
 @csrf_exempt
 @api_login_required
 def customer_edit(request, pk):
-    customer = get_object_or_404(Customer, pk=pk)
+    customer = get_object_or_404(Customer, pk=pk, user=request.user)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
             form = CustomerForm(data, instance=customer)
             if form.is_valid():
-                customer = form.save()
+                customer = form.save(commit=False)
+                customer.user = request.user
+                customer.save()
                 return JsonResponse(serialize_customer(customer))
             else:
                 return JsonResponse({'error': 'Invalid customer form.', 'details': form.errors}, status=400)
@@ -632,7 +640,7 @@ def customer_edit(request, pk):
 @csrf_exempt
 @api_login_required
 def customer_delete(request, pk):
-    customer = get_object_or_404(Customer, pk=pk)
+    customer = get_object_or_404(Customer, pk=pk, user=request.user)
     if request.method == 'POST':
         name = customer.name
         customer.delete()
@@ -641,8 +649,8 @@ def customer_delete(request, pk):
 
 @api_login_required
 def customer_history(request, pk):
-    customer = get_object_or_404(Customer, pk=pk)
-    invoices = customer.invoices.all().order_by('-bill_date', '-created_at')
+    customer = get_object_or_404(Customer, pk=pk, user=request.user)
+    invoices = customer.invoices.filter(user=request.user).order_by('-bill_date', '-created_at')
     
     serialized_invoices = []
     for inv in invoices:
@@ -668,7 +676,7 @@ def invoice_list(request):
     date_from = request.GET.get('date_from', '')
     date_to = request.GET.get('date_to', '')
     
-    invoices = Invoice.objects.all().prefetch_related('items').order_by('-bill_date', '-created_at')
+    invoices = Invoice.objects.filter(user=request.user).prefetch_related('items').order_by('-bill_date', '-created_at')
     
     if q:
         invoices = invoices.filter(
@@ -748,11 +756,17 @@ def invoice_add(request):
             if form.is_valid():
                 with transaction.atomic():
                     invoice = form.save(commit=False)
+                    invoice.user = request.user
+                    
+                    if invoice.customer and invoice.customer.user != request.user:
+                        invoice.customer = None
+
                     dashboard_item_id = data.get('dashboard_item_id')
                     if dashboard_item_id:
-                        invoice.dashboard_item_id = dashboard_item_id
+                        db_item = DashboardItem.objects.filter(id=dashboard_item_id, user=request.user).first()
+                        invoice.dashboard_item = db_item
                     if not invoice.is_challan:
-                        invoice.bill_number = get_next_bill_number()
+                        invoice.bill_number = get_next_bill_number(user=request.user)
                     if invoice.customer:
                         invoice.customer_name = invoice.customer.name
                         invoice.customer_address = invoice.customer.address
@@ -767,15 +781,10 @@ def invoice_add(request):
                     # Mark individual dashboard products as 'Done'
                     billed_products = data.get('billed_products', [])
                     if billed_products:
-                        _mark_dashboard_products_done(billed_products, invoice.id)
-                    elif dashboard_item_id:
-                        # Fallback: mark entire item done (legacy single-product behavior)
-                        try:
-                            db_item = DashboardItem.objects.get(id=dashboard_item_id)
-                            db_item.status = 'Done'
-                            db_item.save()
-                        except DashboardItem.DoesNotExist:
-                            pass
+                        _mark_dashboard_products_done(billed_products, invoice.id, user=request.user)
+                    elif invoice.dashboard_item:
+                        invoice.dashboard_item.status = 'Done'
+                        invoice.dashboard_item.save()
                     
                     for item in items_data:
                         # Sanitize item decimal fields
@@ -812,7 +821,7 @@ def invoice_add(request):
 @csrf_exempt
 @api_login_required
 def invoice_edit(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
+    invoice = get_object_or_404(Invoice, pk=pk, user=request.user)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -852,6 +861,9 @@ def invoice_edit(request, pk):
             if form.is_valid():
                 with transaction.atomic():
                     invoice = form.save(commit=False)
+                    invoice.user = request.user
+                    if invoice.customer and invoice.customer.user != request.user:
+                        invoice.customer = None
                     if invoice.customer:
                         invoice.customer_name = invoice.customer.name
                         invoice.customer_address = invoice.customer.address
@@ -864,10 +876,10 @@ def invoice_edit(request, pk):
                     invoice.save()
                     
                     # Revert previously linked dashboard products, then apply new ones
-                    _revert_dashboard_products_for_invoice(invoice.id)
+                    _revert_dashboard_products_for_invoice(invoice.id, user=request.user)
                     billed_products = data.get('billed_products', [])
                     if billed_products:
-                        _mark_dashboard_products_done(billed_products, invoice.id)
+                        _mark_dashboard_products_done(billed_products, invoice.id, user=request.user)
 
                     # Delete old items and write new ones
                     invoice.items.all().delete()
@@ -906,7 +918,7 @@ def invoice_edit(request, pk):
 @csrf_exempt
 @api_login_required
 def invoice_update_payment(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
+    invoice = get_object_or_404(Invoice, pk=pk, user=request.user)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -956,7 +968,7 @@ def invoice_update_payment(request, pk):
 
 @api_login_required
 def invoice_view(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
+    invoice = get_object_or_404(Invoice, pk=pk, user=request.user)
     
     serialized_invoice = serialize_invoice(invoice)
     serialized_items = [serialize_invoice_item(item) for item in invoice.items.all()]
@@ -967,7 +979,7 @@ def invoice_view(request, pk):
 @api_login_required
 @xframe_options_exempt
 def invoice_pdf(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
+    invoice = get_object_or_404(Invoice, pk=pk, user=request.user)
     company = get_user_company(request.user)
     
     if not company:
@@ -987,12 +999,12 @@ def invoice_pdf(request, pk):
 @csrf_exempt
 @api_login_required
 def invoice_delete(request, pk):
-    invoice = get_object_or_404(Invoice, pk=pk)
+    invoice = get_object_or_404(Invoice, pk=pk, user=request.user)
     if request.method == 'POST':
         bill_number = invoice.bill_number
         with transaction.atomic():
             # Revert per-product statuses linked to this invoice
-            _revert_dashboard_products_for_invoice(invoice.id)
+            _revert_dashboard_products_for_invoice(invoice.id, user=request.user)
             # Fallback: also revert the dashboard item FK if present
             if invoice.dashboard_item:
                 # Only reset to Pending if no products are individually tracked
@@ -1029,7 +1041,7 @@ def invoice_pdf_bulk(request):
     if not company:
         return HttpResponse("Please configure Company Settings first.", status=400)
         
-    db_invoices = Invoice.objects.filter(id__in=ids)
+    db_invoices = Invoice.objects.filter(id__in=ids, user=request.user)
     if not db_invoices.exists():
         return HttpResponse("Invoices not found.", status=404)
         
@@ -1107,7 +1119,7 @@ def serialize_dashboard_item(item):
 
 @api_login_required
 def dashboard_items_list(request):
-    items = DashboardItem.objects.all()
+    items = DashboardItem.objects.filter(user=request.user)
     return JsonResponse([serialize_dashboard_item(i) for i in items], safe=False)
 
 @csrf_exempt
@@ -1133,6 +1145,7 @@ def dashboard_item_add(request):
             first_p = products[0] if products else {}
             
             item = DashboardItem.objects.create(
+                user=request.user,
                 customer_name=(data.get('customer_name') or '').strip(),
                 date=data.get('date'),
                 design=(first_p.get('design') or '').strip(),
@@ -1157,7 +1170,7 @@ def dashboard_item_add(request):
 @csrf_exempt
 @api_login_required
 def dashboard_item_edit(request, pk):
-    item = get_object_or_404(DashboardItem, pk=pk)
+    item = get_object_or_404(DashboardItem, pk=pk, user=request.user)
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -1201,7 +1214,7 @@ def dashboard_item_edit(request, pk):
 @csrf_exempt
 @api_login_required
 def dashboard_item_delete(request, pk):
-    item = get_object_or_404(DashboardItem, pk=pk)
+    item = get_object_or_404(DashboardItem, pk=pk, user=request.user)
     if request.method == 'POST':
         if item.status == 'Done':
             return JsonResponse({'error': 'Done items cannot be deleted.'}, status=400)
