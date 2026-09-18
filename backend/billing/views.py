@@ -565,6 +565,7 @@ def customer_get(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
     return JsonResponse(serialize_customer(customer))
 
+@csrf_exempt
 @api_login_required
 def customer_add(request):
     if request.method == 'POST':
@@ -580,6 +581,7 @@ def customer_add(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def customer_edit(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
@@ -596,6 +598,7 @@ def customer_edit(request, pk):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def customer_delete(request, pk):
     customer = get_object_or_404(Customer, pk=pk)
@@ -672,6 +675,7 @@ def invoice_list(request):
         })
     return JsonResponse(serialized, safe=False)
 
+@csrf_exempt
 @api_login_required
 def invoice_add(request):
     if request.method == 'POST':
@@ -774,6 +778,7 @@ def invoice_add(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def invoice_edit(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
@@ -867,6 +872,7 @@ def invoice_edit(request, pk):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def invoice_update_payment(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
@@ -947,6 +953,7 @@ def invoice_pdf(request, pk):
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     return response
 
+@csrf_exempt
 @api_login_required
 def invoice_delete(request, pk):
     invoice = get_object_or_404(Invoice, pk=pk)
@@ -1072,6 +1079,7 @@ def dashboard_items_list(request):
     items = DashboardItem.objects.all()
     return JsonResponse([serialize_dashboard_item(i) for i in items], safe=False)
 
+@csrf_exempt
 @api_login_required
 def dashboard_item_add(request):
     if request.method == 'POST':
@@ -1115,6 +1123,7 @@ def dashboard_item_add(request):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def dashboard_item_edit(request, pk):
     item = get_object_or_404(DashboardItem, pk=pk)
@@ -1158,6 +1167,7 @@ def dashboard_item_edit(request, pk):
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Method not allowed.'}, status=405)
 
+@csrf_exempt
 @api_login_required
 def dashboard_item_delete(request, pk):
     item = get_object_or_404(DashboardItem, pk=pk)
