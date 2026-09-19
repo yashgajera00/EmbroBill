@@ -43,31 +43,45 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
     setError('');
 
     if (!username.trim()) {
-      setError('Please enter a username.');
+      const msg = 'Please enter a username.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (/\s/.test(username) || isInvalid) {
-      setError('Username cannot contain spaces.');
+      const msg = 'Username cannot contain spaces.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (isTaken) {
-      setError('Username is already taken. Please choose another username.');
+      const msg = 'Username is already taken. Please choose another username.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (!companyName.trim()) {
-      setError('Please enter your company or business name.');
+      const msg = 'Please enter your company or business name.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (!password) {
-      setError('Please enter a password.');
+      const msg = 'Please enter a password.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (password.length < 4) {
-      setError('Password must be at least 4 characters long.');
+      const msg = 'Password must be at least 4 characters long.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (password !== confirmPassword) {
-      setError('Passwords do not match. Please re-check.');
+      const msg = 'Passwords do not match. Please re-check.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
 
@@ -140,14 +154,6 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
           {/* Brand Titles */}
           <h1 className="eb-brand-title">Create Account</h1>
           <p className="eb-brand-subtitle">Set up your business profile & credentials</p>
-
-          {/* Error Message */}
-          {error && (
-            <div className="eb-login-error-banner">
-              <i className="bi bi-exclamation-circle-fill me-2 text-danger"></i>
-              <span>{error}</span>
-            </div>
-          )}
 
           {/* Registration Form */}
           <form onSubmit={handleSubmit} noValidate>

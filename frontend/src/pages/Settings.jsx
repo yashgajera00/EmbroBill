@@ -199,11 +199,15 @@ export default function Settings({ user, onLogout, triggerAlert }) {
         setUnlockPassword('');
         setUnlockTarget(null);
       } else {
-        setUnlockError('Verification failed. Invalid password.');
+        const msg = 'Verification failed. Invalid password.';
+        setUnlockError(msg);
+        triggerAlert(msg, 'danger');
       }
     } catch (err) {
       console.error(err);
-      setUnlockError(err.response?.data?.error || 'Incorrect password.');
+      const msg = err.response?.data?.error || 'Incorrect password.';
+      setUnlockError(msg);
+      triggerAlert(msg, 'danger');
     }
   };
 
@@ -1106,7 +1110,6 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                     autoFocus
                     placeholder="Enter password"
                   />
-                  {unlockError && <div className="text-danger small mt-1">{unlockError}</div>}
                 </div>
                 <div className="app-modern-modal-actions-row">
                   <button

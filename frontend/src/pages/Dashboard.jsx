@@ -36,9 +36,13 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const [deleting, setDeleting] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [formError, setFormError] = useState('');
-  const [editingItem, setEditingItem] = useState(null);
+  const [formError, _setFormError] = useState('');
+  const setFormError = (msg) => {
+    _setFormError(msg);
+    if (msg && triggerAlert) {
+      triggerAlert(msg, 'danger');
+    }
+  };
   
   const [defaultHsnCode, setDefaultHsnCode] = useState('');
   const [showInvoiceCreatedModal, setShowInvoiceCreatedModal] = useState(false);
@@ -980,12 +984,6 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
               /* --- READ-ONLY DETAILS VIEW --- */
               <div className="d-flex flex-column" style={{ overflow: 'hidden', flex: 1 }}>
                 <div className="dashboard-add-modal-body">
-                  {formError && (
-                    <div className="alert alert-danger py-2 px-3 small mb-2" style={{ borderRadius: '10px' }}>
-                      {formError}
-                    </div>
-                  )}
-
                   {/* Customer and General Details Card */}
                   <div className="bg-light p-3 rounded-3 border" style={{ fontSize: '13px' }}>
                     <div className="d-flex align-items-center justify-content-between mb-2 pb-2 border-bottom">
@@ -1083,12 +1081,6 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
               /* --- EDITABLE INPUT FORM (Add / Edit Mode matching mockup) --- */
               <form onSubmit={handleFormSubmit} className="d-flex flex-column" style={{ overflow: 'hidden', flex: 1 }}>
                 <div className="dashboard-add-modal-body">
-                  {formError && (
-                    <div className="alert alert-danger py-2 px-3 small mb-1" style={{ borderRadius: '10px' }}>
-                      {formError}
-                    </div>
-                  )}
-
                   {/* 1. Customer Name */}
                   <div className="dashboard-modal-field customer-dropdown-container">
                     <label className="dashboard-modal-label">Customer Name <span className="req">*</span></label>

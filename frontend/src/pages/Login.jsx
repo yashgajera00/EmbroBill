@@ -73,11 +73,15 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!username.trim()) {
-      setError('Please enter your username.');
+      const msg = 'Please enter your username.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     if (!password) {
-      setError('Please enter your password.');
+      const msg = 'Please enter your password.';
+      setError(msg);
+      triggerAlert(msg, 'danger');
       return;
     }
     handleLoginProcess(username.trim(), password);
@@ -133,14 +137,6 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
           {/* Brand Titles */}
           <h1 className="eb-brand-title">EmbroBill</h1>
           <p className="eb-brand-subtitle">Enterprise Textile & Embroidery Billing</p>
-
-          {/* Error Message */}
-          {error && (
-            <div className="eb-login-error-banner">
-              <i className="bi bi-exclamation-circle-fill me-2 text-danger"></i>
-              <span>{error}</span>
-            </div>
-          )}
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} noValidate>
