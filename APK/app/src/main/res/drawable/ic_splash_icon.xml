@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Splash screen icon - EmbroBill "EB" text placeholder -->
+    <!-- White circle background -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-36,0a36,36 0,1 1,72 0a36,36 0,1 1,-72 0" />
+    <!-- Letter E -->
+    <path
+        android:fillColor="#1a73e8"
+        android:pathData="M34,38h10v3h-6.5v4.5h5.5v3h-5.5v4.5h6.5v3h-10z" />
+    <!-- Letter B -->
+    <path
+        android:fillColor="#1a73e8"
+        android:pathData="M48,38h5c2.5,0 4.5,1.5 4.5,4 0,1.5 -0.8,2.8 -2,3.3 1.5,0.5 2.5,2 2.5,3.7 0,2.5 -2,4.5 -4.5,4.5h-5.5zM51.5,41v4h1.5c1,0 2,-0.8 2,-2s-1,-2 -2,-2zM51.5,48v4.5h2c1.2,0 2,-1 2,-2.2s-0.8,-2.3 -2,-2.3z" />
+</vector>

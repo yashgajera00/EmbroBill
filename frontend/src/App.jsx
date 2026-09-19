@@ -10,6 +10,7 @@ import CreateInvoice from './pages/CreateInvoice';
 import CreateChallan from './pages/CreateChallan';
 import Dashboard from './pages/Dashboard';
 import AppHome from './pages/AppHome';
+import PillToast from './components/PillToast';
 import logoIcon from './assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import logoText from './assets/EmbroBill.png';
 
@@ -92,6 +93,13 @@ export default function App() {
       try {
         const data = await authAPI.status();
         if (data.isAuthenticated) {
+          if (window.AndroidAppLock) {
+            try {
+              window.AndroidAppLock.setActiveUser(data.username);
+            } catch (e) {
+              console.error('AndroidAppLock sync error:', e);
+            }
+          }
           setUser({ username: data.username });
         } else {
           setUser(null);
@@ -108,14 +116,16 @@ export default function App() {
 
   const alertTimerRef = React.useRef(null);
 
-  const triggerAlert = (message, type = 'success') => {
+  const triggerAlert = (message, type = 'success', autoDismissMs = 4500) => {
     if (alertTimerRef.current) {
       clearTimeout(alertTimerRef.current);
     }
     setAlert({ message, type });
-    alertTimerRef.current = setTimeout(() => {
-      setAlert(null);
-    }, 4500);
+    if (autoDismissMs && autoDismissMs > 0) {
+      alertTimerRef.current = setTimeout(() => {
+        setAlert(null);
+      }, autoDismissMs);
+    }
   };
 
   const clearAlert = () => {
@@ -123,6 +133,27 @@ export default function App() {
       clearTimeout(alertTimerRef.current);
     }
     setAlert(null);
+  };
+
+  // Expose global triggerAlert so injected scripts or external events can show pill toasts
+  useEffect(() => {
+    window.triggerAlert = triggerAlert;
+    window.clearAlert = clearAlert;
+    return () => {
+      delete window.triggerAlert;
+      delete window.clearAlert;
+    };
+  }, []);
+
+  const handleUserLogout = () => {
+    if (window.AndroidAppLock && user?.username) {
+      try {
+        window.AndroidAppLock.onUserLogout(user.username);
+      } catch (e) {
+        console.error('AndroidAppLock logout error:', e);
+      }
+    }
+    setUser(null);
   };
 
   const mainContent = (
@@ -136,7 +167,16 @@ export default function App() {
               <Navigate to="/" replace />
             ) : (
               <Login
-                onLoginSuccess={(username) => setUser({ username })}
+                onLoginSuccess={(username) => {
+                  if (window.AndroidAppLock) {
+                    try {
+                      window.AndroidAppLock.setActiveUser(username);
+                    } catch (e) {
+                      console.error('AndroidAppLock sync error:', e);
+                    }
+                  }
+                  setUser({ username });
+                }}
                 triggerAlert={triggerAlert}
               />
             )
@@ -151,7 +191,16 @@ export default function App() {
               <Navigate to="/" replace />
             ) : (
               <Register
-                onRegisterSuccess={(username) => setUser({ username })}
+                onRegisterSuccess={(username) => {
+                  if (window.AndroidAppLock) {
+                    try {
+                      window.AndroidAppLock.setActiveUser(username);
+                    } catch (e) {
+                      console.error('AndroidAppLock sync error:', e);
+                    }
+                  }
+                  setUser({ username });
+                }}
                 triggerAlert={triggerAlert}
               />
             )
@@ -160,19 +209,19 @@ export default function App() {
 
         {/* Protected routes wrapped in main Layout */}
         <Route element={<ProtectedRoute user={user} loading={loading} />}>
-          <Route element={<MainLayout user={user} onLogout={() => setUser(null)} alert={alert} clearAlert={clearAlert} />}>
+          <Route element={<MainLayout user={user} onLogout={handleUserLogout} alert={alert} clearAlert={clearAlert} />}>
             {/* Index & Home route */}
-            <Route path="/" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
-            <Route path="/home" element={<AppHome user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/" element={<AppHome user={user} onLogout={handleUserLogout} triggerAlert={triggerAlert} />} />
+            <Route path="/home" element={<AppHome user={user} onLogout={handleUserLogout} triggerAlert={triggerAlert} />} />
 
             {/* Dashboard route */}
-            <Route path="/dashboard" element={<Dashboard user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/dashboard" element={<Dashboard user={user} onLogout={handleUserLogout} triggerAlert={triggerAlert} />} />
 
             {/* Settings route */}
-            <Route path="/settings" element={<Settings user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/settings" element={<Settings user={user} onLogout={handleUserLogout} triggerAlert={triggerAlert} />} />
 
             {/* Invoice routes */}
-            <Route path="/invoice-history" element={<InvoiceHistory user={user} onLogout={() => setUser(null)} triggerAlert={triggerAlert} />} />
+            <Route path="/invoice-history" element={<InvoiceHistory user={user} onLogout={handleUserLogout} triggerAlert={triggerAlert} />} />
             <Route path="/create-invoice" element={<CreateInvoice triggerAlert={triggerAlert} mode="Add" />} />
             <Route path="/create-challan" element={<CreateChallan triggerAlert={triggerAlert} mode="Add" />} />
             <Route path="/invoices/edit/:id" element={<CreateInvoice triggerAlert={triggerAlert} mode="Edit" />} />
@@ -190,5 +239,10 @@ export default function App() {
     return <Splash fadeOut={fadeOut} />;
   }
 
-  return mainContent;
+  return (
+    <>
+      <PillToast alert={alert} onClear={clearAlert} />
+      {mainContent}
+    </>
+  );
 }

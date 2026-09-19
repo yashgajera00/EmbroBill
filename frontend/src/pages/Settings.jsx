@@ -52,6 +52,91 @@ export default function Settings({ user, onLogout, triggerAlert }) {
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState('');
 
+  const currentUsername = user?.username || formData.user_id || localStorage.getItem('embrobill_remember_username') || '';
+
+  // App Lock State
+  const [appLockEnabled, setAppLockEnabled] = useState(() => {
+    if (typeof window !== 'undefined' && window.AndroidAppLock && currentUsername) {
+      try {
+        return window.AndroidAppLock.isAppLockEnabled(currentUsername);
+      } catch (e) {
+        console.error('Error reading native app lock:', e);
+      }
+    }
+    const saved = localStorage.getItem(`embrobill_app_lock_${currentUsername || 'default'}`);
+    return saved === 'true';
+  });
+
+  const [appLockLoading, setAppLockLoading] = useState(false);
+
+  // Sync state with native AndroidAppLock if available
+  useEffect(() => {
+    if (!currentUsername) return;
+    if (typeof window !== 'undefined' && window.AndroidAppLock) {
+      try {
+        window.AndroidAppLock.setActiveUser(currentUsername);
+        const nativeStatus = window.AndroidAppLock.isAppLockEnabled(currentUsername);
+        setAppLockEnabled(nativeStatus);
+        localStorage.setItem(`embrobill_app_lock_${currentUsername}`, String(nativeStatus));
+      } catch (e) {
+        console.error('Error syncing app lock:', e);
+      }
+    } else {
+      const saved = localStorage.getItem(`embrobill_app_lock_${currentUsername}`);
+      setAppLockEnabled(saved === 'true');
+    }
+  }, [currentUsername]);
+
+  // Handle native biometric verification result callback
+  useEffect(() => {
+    window.onAppLockVerified = (success, message) => {
+      setAppLockLoading(false);
+      if (success) {
+        setAppLockEnabled(true);
+        if (currentUsername) {
+          localStorage.setItem(`embrobill_app_lock_${currentUsername}`, 'true');
+        }
+        triggerAlert(message || 'App Lock enabled successfully.', 'success');
+      } else {
+        setAppLockEnabled(false);
+        triggerAlert(message || 'App Lock setup cancelled or failed.', 'danger');
+      }
+    };
+    return () => {
+      delete window.onAppLockVerified;
+    };
+  }, [currentUsername, triggerAlert]);
+
+  const handleAppLockToggle = (e) => {
+    const willEnable = e.target.checked;
+    
+    if (typeof window !== 'undefined' && window.AndroidAppLock) {
+      if (willEnable) {
+        setAppLockLoading(true);
+        triggerAlert('Waiting for Fingerprint or Phone PIN verification...', 'info', 20000);
+        setTimeout(() => setAppLockLoading(false), 20000);
+        window.AndroidAppLock.verifyAndEnableAppLock(currentUsername);
+      } else {
+        window.AndroidAppLock.setAppLockEnabled(currentUsername, false);
+        setAppLockEnabled(false);
+        if (currentUsername) {
+          localStorage.setItem(`embrobill_app_lock_${currentUsername}`, 'false');
+        }
+        triggerAlert('App Lock has been disabled.', 'info');
+      }
+    } else {
+      setAppLockEnabled(willEnable);
+      if (currentUsername) {
+        localStorage.setItem(`embrobill_app_lock_${currentUsername}`, String(willEnable));
+      }
+      if (willEnable) {
+        triggerAlert('App Lock preference saved. Device authentication will be required when accessing via the EmbroBill Android App.', 'info');
+      } else {
+        triggerAlert('App Lock disabled.', 'info');
+      }
+    }
+  };
+
   // Accordion state for Policies section
   const [openPolicy, setOpenPolicy] = useState(null);
 
@@ -212,6 +297,13 @@ export default function Settings({ user, onLogout, triggerAlert }) {
 
   const executeLogout = async () => {
     try {
+      if (typeof window !== 'undefined' && window.AndroidAppLock && currentUsername) {
+        try {
+          window.AndroidAppLock.onUserLogout(currentUsername);
+        } catch (e) {
+          console.error('AndroidAppLock logout error:', e);
+        }
+      }
       await authAPI.logout();
       if (onLogout) {
         onLogout();
@@ -623,6 +715,54 @@ export default function Settings({ user, onLogout, triggerAlert }) {
             </div>
 
           </form>
+
+          {/* Security: App Lock Section */}
+          <div className="settings-card mb-3">
+            <div className="settings-card-header">
+              <div className="settings-card-header-left">
+                <div className="settings-icon-badge blue">
+                  <i className="bi bi-shield-check"></i>
+                </div>
+                <h6 className="settings-card-title blue">Security</h6>
+              </div>
+              <span className={`settings-badge-pill ${appLockEnabled ? 'green' : 'gray'}`}>
+                {appLockEnabled ? 'ACTIVE' : 'OFF'}
+              </span>
+            </div>
+
+            <p className="settings-card-desc">
+              Protect your account by requiring Android device authentication (Fingerprint, Face, or Phone PIN/Pattern) before accessing EmbroBill.
+            </p>
+
+            <div className="settings-app-lock-row d-flex align-items-center justify-content-between p-3 rounded-3" style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+              <div className="d-flex align-items-center gap-3">
+                <div style={{ width: '42px', height: '42px', borderRadius: '10px', backgroundColor: appLockEnabled ? '#dbeafe' : '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: appLockEnabled ? '#1e40af' : '#64748b', fontSize: '20px' }}>
+                  <i className={`bi ${appLockEnabled ? 'bi-fingerprint' : 'bi-shield-lock'}`}></i>
+                </div>
+                <div>
+                  <div className="fw-bold text-dark" style={{ fontSize: '15px' }}>App Lock</div>
+                  <div className="text-muted" style={{ fontSize: '12px' }}>
+                    {appLockEnabled
+                      ? 'Protected by phone screen lock / biometrics'
+                      : 'Disabled — opens without device authentication'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="form-check form-switch mb-0">
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  role="switch"
+                  id="appLockSwitch"
+                  checked={appLockEnabled}
+                  onChange={handleAppLockToggle}
+                  disabled={appLockLoading}
+                  style={{ width: '48px', height: '24px', cursor: 'pointer' }}
+                />
+              </div>
+            </div>
+          </div>
 
           {/* 5. Change Password Card */}
           <div className="settings-card settings-card-security mb-3">

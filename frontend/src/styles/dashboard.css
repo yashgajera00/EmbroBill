@@ -9,11 +9,18 @@
     --primary-hover: #4338ca;
 }
 
+html, body {
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+}
+
 body {
     font-family: var(--font-primary);
     background-color: var(--bg-primary);
     overflow-x: auto;
     margin: 0;
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
 }
 
 /* --- LAYOUT --- */
@@ -256,23 +263,19 @@ body {
   }
 }
 
-/* Status Bar */
+/* Status Bar - hidden to use system default device status bar */
 .eb-status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px 8px 24px;
-  font-size: 13.5px;
-  font-weight: 700;
-  color: #0f172a;
+  display: none !important;
 }
 
 .eb-status-time {
+  display: none !important;
   font-feature-settings: "tnum";
   letter-spacing: -0.2px;
 }
 
 .eb-status-icons {
+  display: none !important;
   display: flex;
   align-items: center;
   gap: 6px;

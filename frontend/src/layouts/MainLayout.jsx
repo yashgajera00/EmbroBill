@@ -38,27 +38,6 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
     location.pathname === '/settings';
   const hideNavbar = !user || location.pathname === '/login' || isMobilePage;
 
-  const getToastIcon = (type, message = '') => {
-    const msgLower = (message || '').toLowerCase();
-    if (msgLower.includes('unlocked')) {
-      return 'bi-unlock-fill';
-    }
-    if (msgLower.includes('locked')) {
-      return 'bi-lock-fill';
-    }
-    switch (type) {
-      case 'success':
-        return 'bi-check-circle-fill';
-      case 'danger':
-      case 'error':
-        return 'bi-exclamation-circle-fill';
-      case 'warning':
-        return 'bi-exclamation-triangle-fill';
-      case 'info':
-      default:
-        return 'bi-info-circle-fill';
-    }
-  };
 
   return (
     <div>
@@ -154,27 +133,6 @@ export default function MainLayout({ user, onLogout, alert, clearAlert }) {
           flexDirection: 'column' 
         }}
       >
-        {/* Floating Pill Toast Notification matching user screenshot */}
-        {alert && (
-          <div className="app-pill-toast-container no-print">
-            <div className={`app-pill-toast ${alert.type || 'success'}`}>
-              <div className="app-pill-toast-left">
-                <i className={`bi ${getToastIcon(alert.type, alert.message)} app-pill-toast-icon`}></i>
-                <span className="app-pill-toast-message">{alert.message}</span>
-              </div>
-              <button
-                type="button"
-                className="app-pill-toast-close"
-                onClick={clearAlert}
-                title="Dismiss"
-                aria-label="Dismiss notification"
-              >
-                <i className="bi bi-x-lg"></i>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Main Content Render */}
         <Outlet />
       </div>
