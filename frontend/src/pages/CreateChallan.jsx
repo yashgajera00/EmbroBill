@@ -6,6 +6,7 @@ import settingsAPI from '../services/settingsAPI';
 import { convertNumberToWords } from '../utils/numberToWords';
 import Rupee from '../utils/Rupee';
 import DateInput from '../utils/DateInput';
+import { isAndroidApp, downloadPdfBlob, previewPdfBlob } from '../utils/pdfHelper';
 import '../styles/appHome.css';
 
 const formatAmount = (val) => {
@@ -139,6 +140,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
   const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
   const [previewBillNumber, setPreviewBillNumber] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewBlob, setPreviewBlob] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [defaultHsnCode, setDefaultHsnCode] = useState('');
   const [editingCell, setEditingCell] = useState(null); // { rowIndex: number, field: string }
@@ -1029,29 +1031,30 @@ export default function CreateChallan({ triggerAlert, mode }) {
     navigate('/invoice-history');
   };
 
-  const handleDownloadPreviewPdf = () => {
-    if (!previewBlobUrl) return;
-    const link = document.createElement('a');
-    link.href = previewBlobUrl;
+  const handleDownloadPreviewPdf = async () => {
+    if (!previewBlob) return;
     const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
     const prefix = 'Challan';
-    link.setAttribute('download', `${prefix}_${cleanBillNo}.pdf`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    await downloadPdfBlob(previewBlob, `${prefix}_${cleanBillNo}.pdf`, triggerAlert);
   };
 
   // Fetch PDF as blob when previewInvoiceId changes (fixes Electron app:// protocol PDF rendering)
   useEffect(() => {
     if (!previewInvoiceId) {
+      if (previewBlobUrl) {
+        URL.revokeObjectURL(previewBlobUrl);
+        setPreviewBlobUrl(null);
+      }
+      setPreviewBlob(null);
       return;
     }
 
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
-      .then(blob => {
+      .then(async (blob) => {
         if (!cancelled) {
+          setPreviewBlob(blob);
           const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
           const prefix = 'Challan';
           const filename = `${prefix}_${cleanBillNo}.pdf`;
@@ -1065,6 +1068,11 @@ export default function CreateChallan({ triggerAlert, mode }) {
           const file = new File([blob], filename, { type: 'application/pdf' });
           const url = URL.createObjectURL(file);
           setPreviewBlobUrl(url);
+
+          // If in Android APK, automatically open system PDF viewer
+          if (isAndroidApp()) {
+            await previewPdfBlob(blob, filename);
+          }
         }
       })
       .catch(err => {
@@ -1073,6 +1081,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
           setPreviewInvoiceId(null);
           setPreviewBillNumber('');
         }
+        if (triggerAlert) triggerAlert('Failed to load PDF preview.', 'danger');
       })
       .finally(() => {
         if (!cancelled) setPreviewLoading(false);
@@ -2152,13 +2161,54 @@ export default function CreateChallan({ triggerAlert, mode }) {
               </button>
             </div>
 
-            <div style={{ flex: '1 1 auto', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: '1 1 auto', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
               {previewLoading || !previewBlobUrl ? (
                 <div className="text-center py-5">
                   <div className="spinner-border text-primary mb-3" role="status" style={{ width: '2.5rem', height: '2.5rem' }}>
                     <span className="visually-hidden">Loading...</span>
                   </div>
                   <p className="mb-0 fw-semibold text-muted">Loading PDF Preview...</p>
+                </div>
+              ) : isAndroidApp() ? (
+                <div className="text-center p-4 d-flex flex-column align-items-center justify-content-center" style={{ width: '100%', height: '100%' }}>
+                  <div style={{
+                    width: '68px',
+                    height: '68px',
+                    borderRadius: '18px',
+                    backgroundColor: '#fee2e2',
+                    color: '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '34px',
+                    marginBottom: '16px',
+                    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.15)'
+                  }}>
+                    <i className="bi bi-file-earmark-pdf-fill"></i>
+                  </div>
+                  <h5 className="fw-bold text-dark mb-1" style={{ fontSize: '16px' }}>
+                    Delivery Challan Ready
+                  </h5>
+                  <p className="text-muted small mb-3">
+                    Bill #{previewBillNumber || invoiceForm.bill_number}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 mb-2"
+                    style={{ borderRadius: '10px', fontWeight: 600, fontSize: '14px' }}
+                    onClick={() => {
+                      if (previewBlob) {
+                        const cleanBillNo = (previewBillNumber || invoiceForm.bill_number || 'Preview').replace(/\//g, '_');
+                        const prefix = 'Challan';
+                        previewPdfBlob(previewBlob, `${prefix}_${cleanBillNo}.pdf`);
+                      }
+                    }}
+                  >
+                    <i className="bi bi-eye-fill"></i> Open in PDF Viewer
+                  </button>
+                  <span className="text-muted" style={{ fontSize: '11px' }}>
+                    Tap to view full PDF with zoom, print & share
+                  </span>
                 </div>
               ) : (
                 <iframe

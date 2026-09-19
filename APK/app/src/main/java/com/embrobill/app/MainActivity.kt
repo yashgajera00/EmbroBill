@@ -71,6 +71,7 @@ class MainActivity : AppCompatActivity() {
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private val FILE_CHOOSER_REQUEST_CODE = 1001
     private val STORAGE_PERMISSION_REQUEST_CODE = 1002
+    val pdfInterface by lazy { AndroidPdfInterface(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Install splash screen before super.onCreate
@@ -184,6 +185,7 @@ class MainActivity : AppCompatActivity() {
 
         // Register JavaScript interface for App Lock & biometric verification
         webView.addJavascriptInterface(AndroidAppLockInterface(this), "AndroidAppLock")
+        webView.addJavascriptInterface(pdfInterface, "AndroidApp")
 
         // 1. Disable password saving & form data saving in WebView
         @Suppress("DEPRECATION")
@@ -369,6 +371,35 @@ class MainActivity : AppCompatActivity() {
         mimeType: String,
         contentLength: Long
     ) {
+        if (url.startsWith("blob:") || url.startsWith("data:")) {
+            val safeFileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            val js = """
+                (function() {
+                    try {
+                        fetch('$url')
+                            .then(function(r) { return r.blob(); })
+                            .then(function(b) {
+                                var reader = new FileReader();
+                                reader.onloadend = function() {
+                                    var b64 = reader.result;
+                                    if (window.AndroidApp && window.AndroidApp.downloadPdf) {
+                                        window.AndroidApp.downloadPdf(b64, '$safeFileName');
+                                    } else if (window.AndroidAppLock && window.AndroidAppLock.downloadPdf) {
+                                        window.AndroidAppLock.downloadPdf(b64, '$safeFileName');
+                                    }
+                                };
+                                reader.readAsDataURL(b);
+                            })
+                            .catch(function(err) {
+                                console.error('Blob download failed:', err);
+                            });
+                    } catch(e) {}
+                })();
+            """.trimIndent()
+            webView.evaluateJavascript(js, null)
+            return
+        }
+
         // Check/request storage permission for older devices
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -644,6 +675,44 @@ class MainActivity : AppCompatActivity() {
                         if (!isEditable) {
                             e.preventDefault();
                             return false;
+                        }
+                    }, true);
+
+                    // Intercept blob and data URL downloads from anchor tags
+                    document.addEventListener('click', function(e) {
+                        var a = e.target.closest ? e.target.closest('a') : null;
+                        if (!a) return;
+                        var href = a.getAttribute('href') || a.href || '';
+                        var download = a.getAttribute('download');
+                        if (download !== null && (href.indexOf('blob:') === 0 || href.indexOf('data:') === 0)) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var filename = download || 'Invoice.pdf';
+                            if (href.indexOf('data:') === 0) {
+                                if (window.AndroidApp && window.AndroidApp.downloadPdf) {
+                                    window.AndroidApp.downloadPdf(href, filename);
+                                } else if (window.AndroidAppLock && window.AndroidAppLock.downloadPdf) {
+                                    window.AndroidAppLock.downloadPdf(href, filename);
+                                }
+                            } else if (href.indexOf('blob:') === 0) {
+                                fetch(href)
+                                    .then(function(res) { return res.blob(); })
+                                    .then(function(blob) {
+                                        var reader = new FileReader();
+                                        reader.onloadend = function() {
+                                            var b64 = reader.result;
+                                            if (window.AndroidApp && window.AndroidApp.downloadPdf) {
+                                                window.AndroidApp.downloadPdf(b64, filename);
+                                            } else if (window.AndroidAppLock && window.AndroidAppLock.downloadPdf) {
+                                                window.AndroidAppLock.downloadPdf(b64, filename);
+                                            }
+                                        };
+                                        reader.readAsDataURL(blob);
+                                    })
+                                    .catch(function(err) {
+                                        console.error('Blob intercept error:', err);
+                                    });
+                            }
                         }
                     }, true);
                 }
@@ -1023,6 +1092,16 @@ class MainActivity : AppCompatActivity() {
             activity.runOnUiThread {
                 activity.handleUserLogout(username)
             }
+        }
+
+        @JavascriptInterface
+        fun downloadPdf(base64Data: String?, fileName: String?) {
+            activity.pdfInterface.downloadPdf(base64Data, fileName)
+        }
+
+        @JavascriptInterface
+        fun previewPdf(base64Data: String?, fileName: String?) {
+            activity.pdfInterface.previewPdf(base64Data, fileName)
         }
     }
 

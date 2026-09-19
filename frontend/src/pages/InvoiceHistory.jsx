@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import invoiceAPI from '../services/invoiceAPI';
 import Rupee from '../utils/Rupee';
 import DateInput from '../utils/DateInput';
+import { isAndroidApp, downloadPdfBlob, previewPdfBlob } from '../utils/pdfHelper';
 import '../styles/appHome.css';
 
 const formatAmount = (val) => {
@@ -41,6 +42,7 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
   const [deleting, setDeleting] = useState(false);
   const [previewInvoiceId, setPreviewInvoiceId] = useState(null);
   const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+  const [previewBlob, setPreviewBlob] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
   // Edit Payment modal state
@@ -169,15 +171,10 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
   const handleDownloadPdf = async (invoiceId, billNumber) => {
     try {
       const blob = await invoiceAPI.getPdfBlob(invoiceId);
-      const url = window.URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
-      const link = document.createElement('a');
-      link.href = url;
       const prefix = showDocType === 'challans' ? 'Challan' : 'Invoice';
-      const filename = `${prefix}_${billNumber.replace(/\//g, '_')}.pdf`;
-      link.setAttribute('download', filename);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      const cleanBillNo = (billNumber || 'Bill').replace(/\//g, '_');
+      const filename = `${prefix}_${cleanBillNo}.pdf`;
+      await downloadPdfBlob(blob, filename, triggerAlert);
     } catch (err) {
       console.error('Failed to download PDF:', err);
       if (triggerAlert) triggerAlert('Error downloading PDF file.', 'danger');
@@ -300,14 +297,16 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
         URL.revokeObjectURL(previewBlobUrl);
         setPreviewBlobUrl(null);
       }
+      setPreviewBlob(null);
       return;
     }
 
     let cancelled = false;
     setPreviewLoading(true);
     invoiceAPI.getPdfBlob(previewInvoiceId)
-      .then(blob => {
+      .then(async (blob) => {
         if (!cancelled) {
+          setPreviewBlob(blob);
           const selected = invoices.find(inv => inv.id === previewInvoiceId);
           const cleanBillNo = (selected?.bill_number || 'Preview').replace(/\//g, '_');
           const prefix = selected?.is_challan ? 'Challan' : 'Invoice';
@@ -320,6 +319,11 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
           const file = new File([blob], filename, { type: 'application/pdf' });
           const url = URL.createObjectURL(file);
           setPreviewBlobUrl(url);
+
+          // If in Android APK, automatically open system PDF viewer
+          if (isAndroidApp()) {
+            await previewPdfBlob(blob, filename);
+          }
         }
       })
       .catch(err => {
@@ -327,6 +331,7 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
         if (!cancelled) {
           setPreviewInvoiceId(null);
         }
+        if (triggerAlert) triggerAlert('Failed to load PDF preview.', 'danger');
       })
       .finally(() => {
         if (!cancelled) setPreviewLoading(false);
@@ -334,19 +339,13 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
     return () => { cancelled = true; };
   }, [previewInvoiceId]);
 
-  const handleDownloadPreviewPdf = () => {
-    if (!previewBlobUrl) return;
+  const handleDownloadPreviewPdf = async () => {
+    if (!previewBlob) return;
     const selected = invoices.find(inv => inv.id === previewInvoiceId);
     const cleanBillNo = (selected?.bill_number || 'Preview').replace(/\//g, '_');
     const prefix = selected?.is_challan ? 'Challan' : 'Invoice';
     const filename = `${prefix}_${cleanBillNo}.pdf`;
-
-    const link = document.createElement('a');
-    link.href = previewBlobUrl;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    await downloadPdfBlob(previewBlob, filename, triggerAlert);
   };
 
   return (
@@ -886,13 +885,55 @@ export default function InvoiceHistory({ user, onLogout, triggerAlert }) {
               </button>
             </div>
             
-            <div style={{ flex: '1 1 auto', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: '1 1 auto', backgroundColor: '#f1f5f9', borderRadius: '14px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
               {previewLoading || !previewBlobUrl ? (
                 <div className="text-center py-5">
                   <div className="spinner-border text-primary mb-3" role="status" style={{ width: '2.5rem', height: '2.5rem' }}>
                     <span className="visually-hidden">Loading...</span>
                   </div>
                   <p className="mb-0 fw-semibold text-muted">Loading PDF Preview...</p>
+                </div>
+              ) : isAndroidApp() ? (
+                <div className="text-center p-4 d-flex flex-column align-items-center justify-content-center" style={{ width: '100%', height: '100%' }}>
+                  <div style={{
+                    width: '68px',
+                    height: '68px',
+                    borderRadius: '18px',
+                    backgroundColor: '#fee2e2',
+                    color: '#dc2626',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '34px',
+                    marginBottom: '16px',
+                    boxShadow: '0 4px 12px rgba(220, 38, 38, 0.15)'
+                  }}>
+                    <i className="bi bi-file-earmark-pdf-fill"></i>
+                  </div>
+                  <h5 className="fw-bold text-dark mb-1" style={{ fontSize: '16px' }}>
+                    {invoices.find(inv => inv.id === previewInvoiceId)?.is_challan ? 'Delivery Challan' : 'Tax Invoice'} Preview
+                  </h5>
+                  <p className="text-muted small mb-3">
+                    Bill #{invoices.find(inv => inv.id === previewInvoiceId)?.bill_number || previewInvoiceId}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-primary d-flex align-items-center gap-2 px-4 py-2 mb-2"
+                    style={{ borderRadius: '10px', fontWeight: 600, fontSize: '14px' }}
+                    onClick={() => {
+                      if (previewBlob) {
+                        const selected = invoices.find(inv => inv.id === previewInvoiceId);
+                        const cleanBillNo = (selected?.bill_number || 'Preview').replace(/\//g, '_');
+                        const prefix = selected?.is_challan ? 'Challan' : 'Invoice';
+                        previewPdfBlob(previewBlob, `${prefix}_${cleanBillNo}.pdf`);
+                      }
+                    }}
+                  >
+                    <i className="bi bi-eye-fill"></i> Open in PDF Viewer
+                  </button>
+                  <span className="text-muted" style={{ fontSize: '11px' }}>
+                    Tap to open full page with zoom, print & share
+                  </span>
                 </div>
               ) : (
                 <iframe
