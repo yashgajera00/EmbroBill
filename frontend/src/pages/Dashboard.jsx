@@ -36,6 +36,8 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const [deleting, setDeleting] = useState(false);
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
   const [formError, _setFormError] = useState('');
   const setFormError = (msg) => {
     _setFormError(msg);
@@ -105,8 +107,9 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
     if (!formData.customerName || !formData.customerName.trim()) return [];
     const customerLower = formData.customerName.trim().toLowerCase();
     const brokerLower = (formData.broker || '').trim().toLowerCase();
+    const safeItems = Array.isArray(dashboardItems) ? dashboardItems : [];
 
-    const matched = dashboardItems.filter(item => {
+    const matched = safeItems.filter(item => {
       const matchCust = (item.customer_name || '').trim().toLowerCase() === customerLower;
       const matchBroker = (item.broker || '').trim().toLowerCase() === brokerLower;
       return matchCust && matchBroker;
@@ -143,9 +146,10 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const fetchDashboardItems = async () => {
     try {
       const data = await dashboardAPI.list();
-      setDashboardItems(data);
+      setDashboardItems(Array.isArray(data) ? data : (data?.results || []));
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
+      setDashboardItems([]);
     } finally {
       setLoading(false);
     }
@@ -154,9 +158,10 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   const fetchCustomers = async () => {
     try {
       const data = await customersAPI.list();
-      setCustomers(data);
+      setCustomers(Array.isArray(data) ? data : (data?.results || []));
     } catch (err) {
       console.error('Failed to load customers:', err);
+      setCustomers([]);
     }
   };
 
@@ -599,14 +604,16 @@ export default function Dashboard({ user, onLogout, triggerAlert }) {
   };
 
   // Filtered customer list based on search value
-  const filteredCustomers = customers.filter(c =>
+  const safeCustomersList = Array.isArray(customers) ? customers : [];
+  const filteredCustomers = safeCustomersList.filter(c =>
     (c.name || '').toLowerCase().includes((formData.customerName || '').toLowerCase())
   );
 
   // Map dashboardItems directly for table rendering (main table columns remain unchanged)
-  const itemsList = dashboardItems.map((item, index) => ({
+  const safeDashboardList = Array.isArray(dashboardItems) ? dashboardItems : [];
+  const itemsList = safeDashboardList.map((item, index) => ({
     id: item.id,
-    serialNo: dashboardItems.length - index,
+    serialNo: safeDashboardList.length - index,
     customerName: item.customer_name,
     date: item.date,
     design: item.design || '-',

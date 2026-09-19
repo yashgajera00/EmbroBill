@@ -156,7 +156,7 @@ export default function Register({ onRegisterSuccess, triggerAlert }) {
           <p className="eb-brand-subtitle">Set up your business profile & credentials</p>
 
           {/* Registration Form */}
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate autoComplete="off">
             {/* USERNAME */}
             <div className="eb-form-group">
               <div className="eb-form-label-row">

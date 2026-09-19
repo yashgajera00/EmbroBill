@@ -16,7 +16,9 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import android.view.View
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
@@ -129,6 +131,9 @@ class MainActivity : AppCompatActivity() {
         // Enable JavaScript (required for the website)
         webSettings.javaScriptEnabled = true
 
+        // Enable Chrome DevTools remote debugging
+        WebView.setWebContentsDebuggingEnabled(true)
+
         // Enable DOM Storage (required for modern web apps)
         webSettings.domStorageEnabled = true
 
@@ -179,6 +184,30 @@ class MainActivity : AppCompatActivity() {
 
         // Register JavaScript interface for App Lock & biometric verification
         webView.addJavascriptInterface(AndroidAppLockInterface(this), "AndroidAppLock")
+
+        // 1. Disable password saving & form data saving in WebView
+        @Suppress("DEPRECATION")
+        webSettings.savePassword = false
+        @Suppress("DEPRECATION")
+        webSettings.saveFormData = false
+
+        // Disable Google Password Manager & Android Autofill inside the WebView
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        }
+
+        // 2. Disable long-press context menu on normal page content (text, links, images)
+        // while preserving native long-press editing (like Paste, cursor) inside input fields
+        webView.isLongClickable = true
+        webView.setOnLongClickListener { view ->
+            val hitTest = (view as? WebView)?.hitTestResult
+            val type = hitTest?.type ?: WebView.HitTestResult.UNKNOWN_TYPE
+            if (type == WebView.HitTestResult.EDIT_TEXT_TYPE) {
+                false // Allow default editing behavior in input fields
+            } else {
+                true // Consume long-press on normal content to block browser menu / selection
+            }
+        }
 
         // Enable scrolling without overscroll bounce / pull-to-refresh
         webView.isScrollbarFadingEnabled = true
@@ -235,6 +264,7 @@ class MainActivity : AppCompatActivity() {
             progressBar.visibility = View.VISIBLE
             hideError()
             injectHideFakeStatusBar(view)
+            injectDedicatedAppRestrictions(view)
         }
 
         override fun onPageCommitVisible(view: WebView?, url: String?) {
@@ -244,6 +274,7 @@ class MainActivity : AppCompatActivity() {
             }
             injectHideFakeStatusBar(view)
             injectAppLockCardIfNeeded(view)
+            injectDedicatedAppRestrictions(view)
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
@@ -259,6 +290,7 @@ class MainActivity : AppCompatActivity() {
 
             injectHideFakeStatusBar(view)
             injectAppLockCardIfNeeded(view)
+            injectDedicatedAppRestrictions(view)
 
             // Flush cookies to persistent storage
             CookieManager.getInstance().flush()
@@ -289,6 +321,18 @@ class MainActivity : AppCompatActivity() {
                 progressBar.visibility = View.GONE
                 injectHideFakeStatusBar(view)
             }
+        }
+
+        override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+            consoleMessage?.let {
+                val logMsg = "[WebView JS] ${it.message()} (line ${it.lineNumber()} of ${it.sourceId()})"
+                when (it.messageLevel()) {
+                    ConsoleMessage.MessageLevel.ERROR -> Log.e("EmbroBillWeb", logMsg)
+                    ConsoleMessage.MessageLevel.WARNING -> Log.w("EmbroBillWeb", logMsg)
+                    else -> Log.d("EmbroBillWeb", logMsg)
+                }
+            }
+            return true
         }
 
         // Handle file upload input
@@ -508,6 +552,107 @@ class MainActivity : AppCompatActivity() {
                         for (var j = 0; j < elements.length; j++) {
                             elements[j].style.setProperty('display', 'none', 'important');
                         }
+                    });
+                    var root = document.body || document.documentElement;
+                    if (root) {
+                        observer.observe(root, { childList: true, subtree: true });
+                    }
+                }
+            })();
+        """.trimIndent()
+        view?.evaluateJavascript(js, null)
+    }
+
+    /**
+     * Dedicated app restrictions:
+     * 1. Disables text selection and touch-callout on all normal page content (headings, paragraphs, buttons, cards, etc.).
+     * 2. Preserves full editing, typing, cursor movement, and text selection inside input fields, textareas, and contenteditable elements.
+     * 3. Disables password autofill prompts and browser password save suggestions.
+     * 4. Suppresses unwanted long-press selection menus on non-editable elements.
+     */
+    private fun injectDedicatedAppRestrictions(view: WebView?) {
+        val js = """
+            (function() {
+                var styleId = 'embrobill-app-restrictions-style';
+                if (!document.getElementById(styleId)) {
+                    var style = document.createElement('style');
+                    style.id = styleId;
+                    style.type = 'text/css';
+                    style.innerHTML = 
+                        '* {' +
+                        '  -webkit-user-select: none !important;' +
+                        '  -moz-user-select: none !important;' +
+                        '  -ms-user-select: none !important;' +
+                        '  user-select: none !important;' +
+                        '  -webkit-touch-callout: none !important;' +
+                        '}' +
+                        'input, textarea, [contenteditable="true"], [contenteditable=""] {' +
+                        '  -webkit-user-select: text !important;' +
+                        '  -moz-user-select: text !important;' +
+                        '  -ms-user-select: text !important;' +
+                        '  user-select: text !important;' +
+                        '  -webkit-touch-callout: default !important;' +
+                        '}';
+                    var head = document.head || document.getElementsByTagName('head')[0] || document.documentElement;
+                    if (head) {
+                        head.appendChild(style);
+                    }
+                }
+
+                function enforceAutofillAndInputRules() {
+                    try {
+                        var forms = document.getElementsByTagName('form');
+                        for (var i = 0; i < forms.length; i++) {
+                            forms[i].setAttribute('autocomplete', 'off');
+                        }
+                        var inputs = document.getElementsByTagName('input');
+                        for (var j = 0; j < inputs.length; j++) {
+                            var inp = inputs[j];
+                            var type = (inp.getAttribute('type') || '').toLowerCase();
+                            if (type === 'password') {
+                                inp.setAttribute('autocomplete', 'new-password');
+                                inp.setAttribute('data-lpignore', 'true');
+                                inp.setAttribute('data-form-type', 'other');
+                            } else if (!inp.hasAttribute('autocomplete') || inp.getAttribute('autocomplete') === 'on') {
+                                inp.setAttribute('autocomplete', 'off');
+                            }
+                        }
+                    } catch (e) {}
+                }
+
+                enforceAutofillAndInputRules();
+
+                if (!window.__ebDedicatedRestrictionsSet) {
+                    window.__ebDedicatedRestrictionsSet = true;
+
+                    // Block long-press context menu on non-editable elements
+                    document.addEventListener('contextmenu', function(e) {
+                        var target = e.target;
+                        var tagName = target ? target.tagName.toLowerCase() : '';
+                        var isEditable = tagName === 'input' || tagName === 'textarea' || (target && target.isContentEditable);
+                        if (!isEditable) {
+                            e.preventDefault();
+                            return false;
+                        }
+                    }, true);
+
+                    // Block text selection start on non-editable elements
+                    document.addEventListener('selectstart', function(e) {
+                        var target = e.target;
+                        var tagName = target ? target.tagName.toLowerCase() : '';
+                        var isEditable = tagName === 'input' || tagName === 'textarea' || (target && target.isContentEditable);
+                        if (!isEditable) {
+                            e.preventDefault();
+                            return false;
+                        }
+                    }, true);
+                }
+
+                // Ensure newly rendered React components/modals get autofill restrictions
+                if (!window.__ebRestrictionsObserver && window.MutationObserver) {
+                    window.__ebRestrictionsObserver = true;
+                    var observer = new MutationObserver(function() {
+                        enforceAutofillAndInputRules();
                     });
                     var root = document.body || document.documentElement;
                     if (root) {

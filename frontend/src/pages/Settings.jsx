@@ -784,7 +784,7 @@ export default function Settings({ user, onLogout, triggerAlert }) {
               Update your account login password. You will need to enter your current password to authorize this update.
             </p>
 
-            <form onSubmit={handlePasswordSubmit}>
+            <form onSubmit={handlePasswordSubmit} autoComplete="off">
               <div className="settings-field-group">
                 <label className="settings-field-label">Current Password</label>
                 <input
@@ -794,6 +794,7 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   placeholder="Enter current password"
                   value={passwordData.old_password}
                   onChange={handlePasswordChange}
+                  autoComplete="new-password"
                   required
                   disabled={passwordSaving}
                 />
@@ -808,6 +809,7 @@ export default function Settings({ user, onLogout, triggerAlert }) {
                   placeholder="Enter new password"
                   value={passwordData.new_password}
                   onChange={handlePasswordChange}
+                  autoComplete="new-password"
                   required
                   disabled={passwordSaving}
                 />

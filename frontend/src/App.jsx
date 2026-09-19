@@ -11,6 +11,7 @@ import CreateChallan from './pages/CreateChallan';
 import Dashboard from './pages/Dashboard';
 import AppHome from './pages/AppHome';
 import PillToast from './components/PillToast';
+import ErrorBoundary from './components/ErrorBoundary';
 import logoIcon from './assets/AZ9wkv0NsH70gxShuXaHxw-AZ9wkxSG6wPW_b0quuXlFw (1).png';
 import logoText from './assets/EmbroBill.png';
 
@@ -240,9 +241,9 @@ export default function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <PillToast alert={alert} onClear={clearAlert} />
       {mainContent}
-    </>
+    </ErrorBoundary>
   );
 }

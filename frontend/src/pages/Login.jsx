@@ -139,7 +139,7 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
           <p className="eb-brand-subtitle">Enterprise Textile & Embroidery Billing</p>
 
           {/* Login Form */}
-          <form onSubmit={handleSubmit} noValidate>
+          <form onSubmit={handleSubmit} noValidate autoComplete="off">
             {/* USERNAME */}
             <div className="eb-form-group">
               <div className="eb-form-label-row">
@@ -195,7 +195,7 @@ export default function Login({ onLoginSuccess, triggerAlert }) {
                   placeholder="Enter password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   disabled={loading}
                 />
                 <button
