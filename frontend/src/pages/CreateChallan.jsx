@@ -603,12 +603,36 @@ export default function CreateChallan({ triggerAlert, mode }) {
   };
 
   const handleRemoveChargeFromList = (index) => {
-    setChargeToDelete(index);
+    const updatedList = extraChargesList.filter((_, idx) => idx !== index);
+    setExtraChargesList(updatedList);
+
+    // Directly apply the deletion to invoiceForm so clicking Apply is not compulsory
+    let netTotal = 0;
+    updatedList.forEach(item => {
+      const val = parseFloat(item.amount) || 0;
+      if (item.type === 'cut') {
+        netTotal -= val;
+      } else {
+        netTotal += val;
+      }
+    });
+
+    const isCut = netTotal < 0;
+    const finalAmount = Math.abs(netTotal).toFixed(2);
+    const finalType = isCut ? 'cut' : 'add';
+    const finalReason = updatedList.length > 0 ? JSON.stringify(updatedList) : '';
+
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: finalAmount,
+      extra_charges_type: finalType,
+      extra_charges_reason: finalReason
+    }));
   };
 
   const handleConfirmDeleteCharge = () => {
     if (chargeToDelete !== null) {
-      setExtraChargesList(prev => prev.filter((_, idx) => idx !== chargeToDelete));
+      handleRemoveChargeFromList(chargeToDelete);
       setChargeToDelete(null);
     }
   };
