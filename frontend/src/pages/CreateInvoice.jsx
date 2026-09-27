@@ -1501,12 +1501,36 @@ export default function CreateInvoice({ triggerAlert, mode }) {
       type: chargeType,
       reason: (extraChargesInput.reason || '').trim()
     };
-    setExtraChargesList(prev => [...prev, newCharge]);
+    const updatedList = [...extraChargesList, newCharge];
+    setExtraChargesList(updatedList);
     setExtraChargesInput({
       amount: '',
       type: chargeType,
       reason: ''
     });
+
+    // Directly sync to invoiceForm
+    let netTotal = 0;
+    updatedList.forEach(item => {
+      const val = parseFloat(item.amount) || 0;
+      if (item.type === 'cut') {
+        netTotal -= val;
+      } else {
+        netTotal += val;
+      }
+    });
+
+    const isCut = netTotal < 0;
+    const finalAmount = Math.abs(netTotal).toFixed(2);
+    const finalType = isCut ? 'cut' : 'add';
+    const finalReason = updatedList.length > 0 ? JSON.stringify(updatedList) : '';
+
+    setInvoiceForm(prev => ({
+      ...prev,
+      extra_charges: finalAmount,
+      extra_charges_type: finalType,
+      extra_charges_reason: finalReason
+    }));
   };
 
   const handleRemoveChargeFromList = (index) => {
@@ -2588,7 +2612,16 @@ export default function CreateInvoice({ triggerAlert, mode }) {
 
               {/* 2. Form to Add New Charge */}
               <div className="bg-light p-3 rounded-3 border mt-1">
-                <div className="fw-bold small mb-2 text-dark" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <div className="fw-bold small text-dark" style={{ fontSize: '0.85rem' }}>Add New Charge / Cut</div>
+                  <button
+                    type="button"
+                    className="create-invoice-action-link"
+                    onClick={handleAddChargeToList}
+                  >
+                    + Add to List
+                  </button>
+                </div>
                 
                 <div className="mb-2">
                   <label className="dashboard-modal-label mb-1">Type</label>
@@ -2627,6 +2660,12 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                     disabled={!extraChargesInput.type}
                     autoFocus={!!extraChargesInput.type}
                     onFocus={(e) => e.target.select()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyExtraCharges();
+                      }
+                    }}
                   />
                 </div>
 
@@ -2640,17 +2679,14 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                     value={extraChargesInput.reason}
                     onChange={(e) => setExtraChargesInput(prev => ({ ...prev, reason: e.target.value }))}
                     disabled={!extraChargesInput.type}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyExtraCharges();
+                      }
+                    }}
                   />
                 </div>
-
-                <button
-                  type="button"
-                  className="dashboard-modal-add-product-btn mt-2"
-                  onClick={handleAddChargeToList}
-                  disabled={!extraChargesInput.type}
-                >
-                  <i className="bi bi-plus-lg"></i> Add to List
-                </button>
               </div>
             </div>
 
