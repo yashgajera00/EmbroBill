@@ -565,8 +565,8 @@ export default function CreateChallan({ triggerAlert, mode }) {
     
     setExtraChargesList(list);
     setExtraChargesInput({
-      amount: '0.00',
-      type: '',
+      amount: '',
+      type: 'add',
       reason: ''
     });
     setShowExtraChargesModal(true);
@@ -588,19 +588,16 @@ export default function CreateChallan({ triggerAlert, mode }) {
       triggerAlert('Please enter a valid amount greater than 0.', 'warning');
       return;
     }
-    if (!extraChargesInput.type) {
-      triggerAlert('Please select a type (Add or Cut).', 'warning');
-      return;
-    }
+    const chargeType = extraChargesInput.type || 'add';
     const newCharge = {
-      amount: amt.toFixed(2),
-      type: extraChargesInput.type,
-      reason: extraChargesInput.reason.trim()
+      amount: Math.abs(amt).toFixed(2),
+      type: chargeType,
+      reason: (extraChargesInput.reason || '').trim()
     };
     setExtraChargesList(prev => [...prev, newCharge]);
     setExtraChargesInput({
-      amount: '0.00',
-      type: '',
+      amount: '',
+      type: chargeType,
       reason: ''
     });
   };
@@ -625,8 +622,26 @@ export default function CreateChallan({ triggerAlert, mode }) {
   };
 
   const handleApplyExtraCharges = () => {
+    let currentList = [...extraChargesList];
+    const amt = parseFloat(extraChargesInput.amount) || 0;
+    if (amt > 0) {
+      const chargeType = extraChargesInput.type || 'add';
+      const pendingCharge = {
+        amount: Math.abs(amt).toFixed(2),
+        type: chargeType,
+        reason: (extraChargesInput.reason || '').trim()
+      };
+      currentList.push(pendingCharge);
+      setExtraChargesList(currentList);
+      setExtraChargesInput({
+        amount: '',
+        type: 'add',
+        reason: ''
+      });
+    }
+
     let netTotal = 0;
-    extraChargesList.forEach(item => {
+    currentList.forEach(item => {
       const val = parseFloat(item.amount) || 0;
       if (item.type === 'cut') {
         netTotal -= val;
@@ -638,7 +653,7 @@ export default function CreateChallan({ triggerAlert, mode }) {
     const isCut = netTotal < 0;
     const finalAmount = Math.abs(netTotal).toFixed(2);
     const finalType = isCut ? 'cut' : 'add';
-    const finalReason = JSON.stringify(extraChargesList);
+    const finalReason = currentList.length > 0 ? JSON.stringify(currentList) : '';
 
     setInvoiceForm(prev => ({
       ...prev,
@@ -656,6 +671,12 @@ export default function CreateChallan({ triggerAlert, mode }) {
       extra_charges_type: 'add',
       extra_charges_reason: ''
     }));
+    setExtraChargesList([]);
+    setExtraChargesInput({
+      amount: '',
+      type: 'add',
+      reason: ''
+    });
     handleCloseExtraChargesModal();
   };
 
