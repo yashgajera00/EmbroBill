@@ -2619,7 +2619,7 @@ export default function CreateInvoice({ triggerAlert, mode }) {
                     className="create-invoice-action-link"
                     onClick={handleAddChargeToList}
                   >
-                    + Add to List
+                    + Add New Item
                   </button>
                 </div>
                 
